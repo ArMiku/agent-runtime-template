@@ -1,0 +1,17 @@
+# Converged runtime dependencies for agent-runtime (see pyproject.toml for the
+# canonical list). Application-layer deps (IM-platform adapters, web dashboard,
+# ORM/DB, vector stores, ...) are intentionally excluded.
+aiohttp>=3.11.18
+anthropic>=0.51.0
+certifi>=2025.4.26
+deprecated>=1.2.18
+docstring-parser>=0.16
+httpx>=0.28.1
+jsonschema>=4.0
+mcp>=1.8.0
+openai>=1.78.0
+pillow>=11.2.1
+pydantic>=2.12.5
+pydub>=0.25.1
+tenacity>=8.0
+typing_extensions>=4.12
