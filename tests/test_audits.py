@@ -179,3 +179,62 @@ def test_skills_layer_has_no_host_or_sandbox_residue():
             if token in lowered:
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
     assert not offenders, "host/sandbox/neo residue in skills layer:\n" + "\n".join(offenders)
+
+
+# --- fs subsystem: dependency direction + no host/sandbox/neo residue --------
+
+FS_DIR = PKG_ROOT / "extensions" / "fs"
+
+
+def _fs_python_files() -> list[Path]:
+    return sorted(FS_DIR.rglob("*.py"))
+
+
+def test_fs_layer_only_depends_inward():
+    """The fs extension may import core/foundation (inward) but never the host
+    application, never another extension, and never carry host branding.
+
+    * no module rooted at ``astrbot`` (host residue)
+    * no module rooted at ``agent_runtime.extensions.plugins`` or
+      ``agent_runtime.extensions.skills`` (fs is wired to skills only via plain path
+      lists handed in by the host — design §7; no direct import)
+    * no module rooted at any other ``agent_runtime.extensions.*`` subpackage
+    * every first-party import resolves under ``agent_runtime`` (core/foundation/self)
+    """
+    assert FS_DIR.is_dir(), "extensions/fs must exist"
+    offenders: list[str] = []
+    for path in _fs_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _absolute_import_modules(tree):
+            top = module.split(".")[0]
+            if module.startswith("astrbot"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
+                continue
+            if module.startswith("agent_runtime.extensions.skills"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (fs must not import skills)")
+                continue
+            if module.startswith("agent_runtime.extensions.plugins"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (fs must not import plugins)")
+                continue
+            if module.startswith("agent_runtime.extensions.") and not module.startswith(
+                "agent_runtime.extensions.fs"
+            ):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (no cross-extension deps)")
+                continue
+            if top == "agent_runtime":
+                continue  # inward first-party import — allowed
+    assert not offenders, "fs layer dependency violations:\n" + "\n".join(offenders)
+
+
+def test_fs_layer_has_no_host_or_sandbox_residue():
+    """Public symbols and source under extensions/fs must not carry host / sandbox /
+    remote-market branding (``astrbot`` / ``sandbox`` / ``neo``)."""
+    banned = ("astrbot", "sandbox", "neo")
+    offenders: list[str] = []
+    for path in _fs_python_files():
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for token in banned:
+            if token in lowered:
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
+    assert not offenders, "host/sandbox/neo residue in fs layer:\n" + "\n".join(offenders)
