@@ -4,10 +4,12 @@ from enum import Enum, auto
 
 from agent_runtime import logger
 from agent_runtime.provider.entities import LLMResponse
+from agent_runtime.provider.provider import Provider
 
 from ..hooks import BaseAgentRunHooks
 from ..response import AgentResponse
 from ..run_context import ContextWrapper, TContext
+from ..tool_executor import BaseFunctionToolExecutor
 
 
 class AgentState(Enum):
@@ -23,7 +25,10 @@ class BaseAgentRunner(T.Generic[TContext]):
     @abc.abstractmethod
     async def reset(
         self,
+        provider: Provider,
+        request: T.Any,
         run_context: ContextWrapper[TContext],
+        tool_executor: BaseFunctionToolExecutor[TContext],
         agent_hooks: BaseAgentRunHooks[TContext],
         **kwargs: T.Any,
     ) -> None:
@@ -33,12 +38,12 @@ class BaseAgentRunner(T.Generic[TContext]):
         ...
 
     @abc.abstractmethod
-    async def step(self) -> T.AsyncGenerator[AgentResponse, None]:
+    def step(self) -> T.AsyncGenerator[AgentResponse, None]:
         """Process a single step of the agent."""
         ...
 
     @abc.abstractmethod
-    async def step_until_done(self, max_step: int) -> T.AsyncGenerator[AgentResponse, None]:
+    def step_until_done(self, max_step: int) -> T.AsyncGenerator[AgentResponse, None]:
         """Process steps until the agent is done."""
         ...
 

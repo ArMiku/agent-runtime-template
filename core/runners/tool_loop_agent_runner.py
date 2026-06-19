@@ -670,6 +670,14 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._transition_state(AgentState.RUNNING)
         llm_resp_result = None
 
+        # LLM 请求前钩子：在 compact 之前、payload 从 run_context.messages 重新构建之前触发。
+        # 钩子通过修改 run_context.messages 影响本步 LLM 调用；放在 compact 之前确保插件
+        # 写入的内容也参与 token 预算与压缩。每个 step() 触发一次（ReAct 多轮每轮都触发）。
+        try:
+            await self.agent_hooks.on_llm_request(self.run_context)
+        except Exception as e:
+            logger.error(f"Error in on_llm_request hook: {e}", exc_info=True)
+
         # Process request-time context before sending it to the provider.
         token_usage = self.req.conversation.token_usage if self.req.conversation else 0
         self._simple_print_message_role("[BefCompact]", self.run_context.messages)
