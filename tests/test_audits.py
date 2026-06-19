@@ -238,3 +238,28 @@ def test_fs_layer_has_no_host_or_sandbox_residue():
             if token in lowered:
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
     assert not offenders, "host/sandbox/neo residue in fs layer:\n" + "\n".join(offenders)
+
+
+# --- composition root: token-neutral branding (import direction NOT constrained) ---
+
+COMPOSITION_ROOT_FILES = (
+    PKG_ROOT / "local_runtime.py",
+    PKG_ROOT / "core" / "hooks_chain.py",
+)
+
+
+def test_composition_root_has_no_host_or_sandbox_residue():
+    """The composition root (``local_runtime.py``) and the core chain primitive
+    (``core/hooks_chain.py``) may depend inward on every extension, but their ``.py``
+    source MUST NOT carry host / sandbox / remote-market branding
+    (``astrbot`` / ``sandbox`` / ``neo``). Import *direction* is intentionally not
+    constrained here — the composition root is the one place allowed to wire everything."""
+    banned = ("astrbot", "sandbox", "neo")
+    offenders: list[str] = []
+    for path in COMPOSITION_ROOT_FILES:
+        assert path.is_file(), f"{path} must exist"
+        lowered = path.read_text(encoding="utf-8").lower()
+        for token in banned:
+            if token in lowered:
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
+    assert not offenders, "host/sandbox/neo residue in composition root:\n" + "\n".join(offenders)
