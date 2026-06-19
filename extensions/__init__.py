@@ -7,7 +7,9 @@ and the default ``FunctionToolExecutor``) — not here. This layer is for option
 subsystems:
 
 * :mod:`~agent_runtime.extensions.skills` — skills loading (roadmap; see its README).
-* :mod:`~agent_runtime.extensions.plugins` — plugin / Star system (roadmap; see its README).
+* :mod:`~agent_runtime.extensions.plugins` — framework-agnostic, event-free plugin
+  mechanism: plugins contribute tools (``@tool``) and agent-loop hooks (``@on_*``) via a
+  neutral ``Plugin`` base + ``PluginManager`` (see its README).
 """
 
 from __future__ import annotations
