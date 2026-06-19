@@ -41,6 +41,7 @@ ALLOWED_THIRD_PARTY = {
     "pytest",
     "tenacity",
     "typing_extensions",
+    "yaml",
 }
 ALLOWED_FIRST_PARTY = {"agent_runtime"}
 
@@ -111,3 +112,70 @@ def test_function_tool_has_no_host_specific_fields():
     assert "active" not in fields
     assert "is_background_task" not in fields
     assert "handler" in fields  # the retyped, event-free handler stays
+
+
+# --- skills subsystem: dependency direction + no host/sandbox/neo residue ----
+
+SKILLS_DIR = PKG_ROOT / "extensions" / "skills"
+
+
+def _absolute_import_modules(tree: ast.AST) -> list[str]:
+    """Full dotted module names of every absolute (level==0) import in the tree."""
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                modules.append(node.module)
+    return modules
+
+
+def _skills_python_files() -> list[Path]:
+    return sorted(SKILLS_DIR.rglob("*.py"))
+
+
+def test_skills_layer_only_depends_inward():
+    """The skills extension may import core/foundation (inward) but never the host
+    application, never the plugin layer, and never another extension.
+
+    * no module rooted at ``astrbot`` (host residue)
+    * no module rooted at ``agent_runtime.extensions.plugins`` (the two extensions are
+      wired together only via plain path lists at the host, design §7)
+    * no module rooted at any other ``agent_runtime.extensions.*`` subpackage
+    * every first-party import resolves under ``agent_runtime`` (core/foundation/self)
+    """
+    assert SKILLS_DIR.is_dir(), "extensions/skills must exist"
+    offenders: list[str] = []
+    for path in _skills_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _absolute_import_modules(tree):
+            top = module.split(".")[0]
+            if module.startswith("astrbot"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
+                continue
+            if module.startswith("agent_runtime.extensions.plugins"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (skills must not import plugins)")
+                continue
+            if module.startswith("agent_runtime.extensions.") and not module.startswith(
+                "agent_runtime.extensions.skills"
+            ):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (no cross-extension deps)")
+                continue
+            if top == "agent_runtime":
+                continue  # inward first-party import — allowed
+    assert not offenders, "skills layer dependency violations:\n" + "\n".join(offenders)
+
+
+def test_skills_layer_has_no_host_or_sandbox_residue():
+    """Public symbols and source under extensions/skills must not carry host / sandbox /
+    remote-market branding (``astrbot`` / ``sandbox`` / ``neo``)."""
+    banned = ("astrbot", "sandbox", "neo")
+    offenders: list[str] = []
+    for path in _skills_python_files():
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for token in banned:
+            if token in lowered:
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
+    assert not offenders, "host/sandbox/neo residue in skills layer:\n" + "\n".join(offenders)

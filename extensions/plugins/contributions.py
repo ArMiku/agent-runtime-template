@@ -11,6 +11,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from agent_runtime.core.tool import FunctionTool
 
@@ -31,6 +32,9 @@ class PluginContribution:
     plugin: Plugin
     tools: list[FunctionTool] = field(default_factory=list)
     hook_methods: dict[str, list[Callable]] = field(default_factory=dict)
+    skill_dirs: list[Path] = field(default_factory=list)
+    """Bundled skill directories declared via ``Plugin.skills_dirs``. The host aggregates
+    these across plugins and injects them into ``SkillManager`` as read-only scan roots."""
 
 
 def collect_contribution(plugin: Plugin) -> PluginContribution:
@@ -65,5 +69,11 @@ def collect_contribution(plugin: Plugin) -> PluginContribution:
         if hook_event is not None:
             bound = getattr(plugin, attr_name)
             contribution.hook_methods.setdefault(hook_event, []).append(bound)
+
+    # Declared bundled skill directories (Plugin.skills_dirs). The skills extension does
+    # not import this layer; the host wires the aggregated paths into SkillManager.
+    declared_skills_dirs = getattr(type(plugin), "skills_dirs", None)
+    if declared_skills_dirs:
+        contribution.skill_dirs = [Path(d) for d in declared_skills_dirs]
 
     return contribution

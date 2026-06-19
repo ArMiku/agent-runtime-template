@@ -5,6 +5,8 @@ application's source tree or packaging layout. Layout:
 
 * ``get_data_dir()``  — persistent runtime data (default ``$AGENT_RUNTIME_DATA_DIR`` or
   ``<cwd>/data``; the MCP tool manager stores its config here).
+* ``get_skills_dir()`` — the read-only skills root (``<data_dir>/skills``); the host
+  drops ``<name>/SKILL.md`` bundles here, the runtime only discovers them.
 * ``get_temp_dir()``  — scratch space for downloads / image caches (a per-package
   directory under the system temp dir, created on demand).
 * ``get_project_dir()`` — the package install root; used only to resolve bundled sample
@@ -18,6 +20,7 @@ import tempfile
 
 __all__ = [
     "get_data_dir",
+    "get_skills_dir",
     "get_temp_dir",
     "get_project_dir",
 ]
@@ -32,6 +35,18 @@ def get_data_dir() -> str:
     if not base:
         base = os.path.join(os.getcwd(), "data")
     path = os.path.realpath(base)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def get_skills_dir() -> str:
+    """Return the runtime's skills directory (``<data_dir>/skills``, created on demand).
+
+    The runtime treats this as a read-only discovery root: the host (platform / ops /
+    plugin) writes ``<name>/SKILL.md`` bundles here and maintains ``skills.json``; the
+    runtime only scans it. Created here so a fresh install works out of the box.
+    """
+    path = os.path.realpath(os.path.join(get_data_dir(), "skills"))
     os.makedirs(path, exist_ok=True)
     return path
 

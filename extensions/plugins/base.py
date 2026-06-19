@@ -13,6 +13,7 @@ Identity is declared either as class attributes (``name`` / ``author`` / ``desc`
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .context import PluginContext
@@ -37,6 +38,13 @@ class Plugin:
     repo: str | None = None
     display_name: str | None = None
     short_desc: str | None = None
+
+    skills_dirs: list[Path] | None = None
+    """Optional bundled skill directories this plugin contributes. Declare as paths
+    (e.g. ``Path(__file__).parent / "skills"``); the host aggregates them and injects
+    them into ``SkillManager`` as read-only extra scan roots. The skills extension never
+    imports this layer — the two are wired together only via this path list at the host.
+    """
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
