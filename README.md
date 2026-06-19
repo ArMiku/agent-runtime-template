@@ -16,13 +16,16 @@ ReAct 工具循环"，
 agent_runtime/
 ├── foundation/        # 最内层：宿主中立的基础设施，不含任何领域知识
 │   └── log / paths / network / io_utils / string_utils / exceptions / config
-├── core/              # Agent 引擎：runner 工具循环、工具、hooks、上下文管理
+├── core/              # Agent 引擎：runner 工具循环、工具原语、hooks、上下文管理
 │   │                  #   接缝抽象 + 各自的默认实现就近同包（按领域而非角色分组）
+│   ├── tool.py / mcp_client.py                         # 工具原语（FunctionTool/ToolSet/MCPTool/MCPClient）
 │   ├── tool_executor.py / function_tool_executor.py   # 执行器接缝 + 默认实现（带 handoff）
 │   ├── run_context.py / session_context.py            # TContext 接缝 + 默认实现
 │   ├── runners/       # BaseAgentRunner 子类（plan-and-execute 规划器落点）
 │   └── context/       # 上下文压缩 / 截断 / token 计数 + ContextStore 持久化接缝及默认实现
 ├── provider/          # LLM Provider 抽象 + 内置 sources（openai / anthropic）
+├── tools/             # 工具管理层：注册表 + MCP 服务生命周期（FunctionToolManager）
+│                      #   仅向内依赖 core 的工具原语（FunctionTool/ToolSet/MCPClient）
 ├── message/           # 中性消息模型（MessageChain 等）
 ├── media/             # 媒体解析接缝（MediaResolver）
 ├── extensions/        # 最外层：可插拔扩展子系统，只向内依赖

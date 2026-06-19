@@ -1,17 +1,15 @@
 from collections.abc import AsyncGenerator
-from typing import Any, Generic
-
-import mcp
+from typing import Generic
 
 from .run_context import ContextWrapper, TContext
-from .tool import FunctionTool
+from .tool import FunctionTool, ToolExecResult
 
 
 class BaseFunctionToolExecutor(Generic[TContext]):
-    @classmethod
-    async def execute(
-        cls,
+    def execute(
+        self,
         tool: FunctionTool,
         run_context: ContextWrapper[TContext],
         **tool_args,
-    ) -> AsyncGenerator[Any | mcp.types.CallToolResult, None]: ...
+    ) -> AsyncGenerator[ToolExecResult, None]:
+        raise NotImplementedError

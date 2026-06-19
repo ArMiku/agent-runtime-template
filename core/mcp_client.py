@@ -7,7 +7,7 @@ import sys
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from pathlib import Path, PureWindowsPath
-from typing import Any, Generic
+from typing import TYPE_CHECKING, Any, Generic
 
 from tenacity import (
     before_sleep_log,
@@ -92,6 +92,15 @@ _DENIED_DOCKER_ARGS = frozenset(
     }
 )
 _STDIO_ALLOWLIST_ENV = "AGENT_RUNTIME_MCP_STDIO_ALLOWED_COMMANDS"
+
+if TYPE_CHECKING:
+    # Unconditional imports for the type checker so ``mcp.types.*`` / ``anyio.*`` /
+    # ``sse_client`` etc. always resolve to real types in annotations, regardless of the
+    # runtime optional-dependency guard below.
+    import anyio
+    import mcp
+    from mcp.client.sse import sse_client
+    from mcp.client.streamable_http import streamablehttp_client
 
 try:
     import anyio

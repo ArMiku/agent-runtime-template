@@ -118,7 +118,7 @@ class ToolSet:
         """Return a light tool set with only name/description."""
         light_tools = []
         for tool in self.tools:
-            if hasattr(tool, "active") and not tool.active:
+            if not getattr(tool, "active", True):
                 continue
             light_params = {
                 "type": "object",
@@ -138,7 +138,7 @@ class ToolSet:
         """Return a tool set with name/parameters only (no description)."""
         param_tools = []
         for tool in self.tools:
-            if hasattr(tool, "active") and not tool.active:
+            if not getattr(tool, "active", True):
                 continue
             params = copy.deepcopy(tool.parameters) if tool.parameters else {"type": "object", "properties": {}}
             param_tools.append(

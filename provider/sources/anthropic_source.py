@@ -3,15 +3,16 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
-import anthropic
 import httpx
 from anthropic import AsyncAnthropic
+from anthropic.lib.streaming import AsyncMessageStream
 from anthropic.types import Message
 from anthropic.types.message_delta_usage import MessageDeltaUsage
 from anthropic.types.usage import Usage
 
 from agent_runtime import logger
 from agent_runtime.core.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
+from agent_runtime.core.tool import ToolSet
 from agent_runtime.foundation.exceptions import EmptyModelOutputError
 
 # Media resolution flows through the injected ``self.media_resolver`` seam
@@ -23,7 +24,6 @@ from agent_runtime.foundation.network import (
     log_connection_failure,
 )
 from agent_runtime.provider.entities import LLMResponse, TokenUsage
-from agent_runtime.provider.func_tool_manager import ToolSet
 from agent_runtime.provider.provider import Provider
 
 from ..register import register_provider_adapter
@@ -438,7 +438,7 @@ class ProviderAnthropic(Provider):
         self._apply_thinking_config(payloads)
 
         async with self.client.messages.stream(**payloads, extra_body=extra_body) as stream:
-            assert isinstance(stream, anthropic.AsyncMessageStream)
+            assert isinstance(stream, AsyncMessageStream)
             async for event in stream:
                 if event.type == "message_start":
                     # the usage contains input token usage

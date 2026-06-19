@@ -489,6 +489,9 @@ class FunctionToolManager:
                 async with self._runtime_lock:
                     self._mcp_starting.discard(name)
 
+        # Both except branches above re-raise, so reaching here means init succeeded.
+        assert mcp_client is not None
+
         async def lifecycle() -> None:
             try:
                 await shutdown_event.wait()
@@ -750,3 +753,8 @@ class FunctionToolManager:
 
 # alias
 FuncCall = FunctionToolManager
+
+# Process-wide default tool registry. Tool registration + MCP lifecycle is its own
+# concern (an outer layer depending only inward on ``core``), so the shared registry
+# lives here in ``tools`` rather than leaking into the provider layer.
+llm_tools = FuncCall()

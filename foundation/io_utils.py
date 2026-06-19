@@ -55,7 +55,7 @@ async def download_file(
             trust_env=True,
             connector=connector,
         ) as session:
-            async with session.get(url, timeout=1800) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=1800)) as resp:
                 if resp.status != 200:
                     logger.error(
                         "Failed to download file from %s. HTTP status code: %s",
@@ -128,7 +128,7 @@ async def download_file(
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, ssl=ssl_context, timeout=120) as resp:
+            async with session.get(url, ssl=ssl_context, timeout=aiohttp.ClientTimeout(total=120)) as resp:
                 total_size = int(resp.headers.get("content-length", 0))
                 downloaded_size = 0
                 start_time = time.time()

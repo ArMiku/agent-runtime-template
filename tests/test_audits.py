@@ -263,3 +263,56 @@ def test_composition_root_has_no_host_or_sandbox_residue():
             if token in lowered:
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
     assert not offenders, "host/sandbox/neo residue in composition root:\n" + "\n".join(offenders)
+
+
+# --- tool-management layer: lives in `tools/`, not `provider/`; depends only inward ----
+
+TOOLS_DIR = PKG_ROOT / "tools"
+PROVIDER_DIR = PKG_ROOT / "provider"
+
+
+def test_tool_manager_lives_in_tools_layer_not_provider():
+    """The tool registry / MCP-lifecycle manager is a tool concern, not a provider
+    concern. It MUST live under ``tools/`` and MUST NOT reappear in ``provider/``
+    (mirrors AstrBot's core/agent-vs-core/tools split)."""
+    assert (TOOLS_DIR / "func_tool_manager.py").is_file(), "tools/func_tool_manager.py must exist"
+    assert not (PROVIDER_DIR / "func_tool_manager.py").exists(), (
+        "func_tool_manager.py must not live under provider/ (it is a tool concern)"
+    )
+    for path in sorted(PROVIDER_DIR.rglob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        assert "class FunctionToolManager" not in src, (
+            f"{path.relative_to(PKG_ROOT)}: FunctionToolManager must not be defined in the provider layer"
+        )
+        assert "FuncCall = FunctionToolManager" not in src, (
+            f"{path.relative_to(PKG_ROOT)}: the tool registry alias must not live in the provider layer"
+        )
+
+
+def test_provider_layer_does_not_import_tools_layer():
+    """The provider layer is inward of the tool-management layer: ``provider/`` MUST NOT
+    import ``agent_runtime.tools`` (tool primitives come from ``core.tool`` instead)."""
+    offenders: list[str] = []
+    for path in sorted(PROVIDER_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _absolute_import_modules(tree):
+            if module == "agent_runtime.tools" or module.startswith("agent_runtime.tools."):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (provider must not import tools)")
+    assert not offenders, "provider→tools dependency violations:\n" + "\n".join(offenders)
+
+
+def test_tools_layer_only_depends_inward():
+    """The tools layer may import ``core`` / ``foundation`` (inward) but never the
+    provider layer, the extensions, or the host application."""
+    assert TOOLS_DIR.is_dir(), "tools/ must exist"
+    offenders: list[str] = []
+    for path in sorted(TOOLS_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _absolute_import_modules(tree):
+            if module.startswith("astrbot"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
+            elif module.startswith("agent_runtime.provider"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (tools must not import provider)")
+            elif module.startswith("agent_runtime.extensions"):
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (tools must not import extensions)")
+    assert not offenders, "tools layer dependency violations:\n" + "\n".join(offenders)

@@ -19,6 +19,7 @@ fs and plugins extensions are imported lazily, so a skills-only caller never pul
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,7 +114,7 @@ def build_local_agent_basics(
     if include_fs:
         from agent_runtime.extensions.fs import build_fs_tools
 
-        allowed_roots: list[str | Path] = [skill_manager.skills_root]
+        allowed_roots: list[str | os.PathLike[str]] = [skill_manager.skills_root]
         allowed_roots.extend(plugin_skill_dirs)
         allowed_roots.extend(extra_allowed_roots)
         tools.merge(ToolSet(build_fs_tools(allowed_roots=allowed_roots)))
