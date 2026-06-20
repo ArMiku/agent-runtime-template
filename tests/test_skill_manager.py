@@ -100,9 +100,7 @@ def test_local_wins_over_plugin_on_name_clash(isolated_runtime, tmp_path):
 
 def test_legacy_skill_md_read_but_not_renamed(isolated_runtime, tmp_path):
     root = tmp_path / "skills"
-    skill_dir = _make_skill(
-        root, "legacy", body="---\nname: legacy\ndescription: legacy desc\n---\nbody", legacy=True
-    )
+    skill_dir = _make_skill(root, "legacy", body="---\nname: legacy\ndescription: legacy desc\n---\nbody", legacy=True)
 
     manager = SkillManager(skills_root=str(root))
     skills = manager.list_skills()

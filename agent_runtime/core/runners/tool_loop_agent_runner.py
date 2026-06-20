@@ -165,11 +165,14 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
     )
 
     async def _complete_with_assistant_response(self, llm_resp: LLMResponse) -> None:
-        """Finalize the current step as a plain assistant response with no tool calls."""
-        self.final_llm_resp = llm_resp
-        self._transition_state(AgentState.DONE)
-        self.stats.end_time = time.time()
+        """Finalize the current step as a plain assistant response with no tool calls.
 
+        Before committing to ``DONE``, the ``on_before_complete`` hook is polled: a hook
+        may veto the completion (e.g. an unfinished plan), in which case the agent stays
+        ``RUNNING`` and ``step_until_done`` drives another round. The assistant turn is
+        recorded first so any reminder the hook appends lands after it in history.
+        """
+        # Record the assistant turn first, so a veto reminder lands after it in history.
         parts = []
         if llm_resp.reasoning_content is not None or llm_resp.reasoning_signature:
             parts.append(
@@ -183,6 +186,21 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         if len(parts) == 0:
             logger.warning("LLM returned empty assistant message with no tool calls.")
         self.run_context.messages.append(Message(role="assistant", content=parts))
+
+        # Completion veto: poll before the DONE transition. A hook returning False refuses
+        # the completion — stay RUNNING (the hook has appended its own reminder) so the
+        # step-driven loop runs another round. A hook raising is treated as an admit.
+        try:
+            admit = await self.agent_hooks.on_before_complete(self.run_context, llm_resp)
+        except Exception as e:
+            logger.error(f"Error in on_before_complete hook: {e}", exc_info=True)
+            admit = True
+        if admit is False:
+            return
+
+        self.final_llm_resp = llm_resp
+        self._transition_state(AgentState.DONE)
+        self.stats.end_time = time.time()
 
         try:
             await self.agent_hooks.on_agent_done(self.run_context, llm_resp)

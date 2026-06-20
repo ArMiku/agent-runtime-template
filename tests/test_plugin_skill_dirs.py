@@ -21,9 +21,7 @@ def _ctx(name: str = "p") -> PluginContext:
 def _write_skill(root, name: str, desc: str) -> None:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {desc}\n---\n# {name}\n", encoding="utf-8"
-    )
+    (skill_dir / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {desc}\n---\n# {name}\n", encoding="utf-8")
 
 
 def test_plugin_declared_skill_dirs_collected(tmp_path):

@@ -56,6 +56,26 @@ class CompositeAgentRunHooks(BaseAgentRunHooks[TContext]):
     ) -> None:
         await self._dispatch("on_agent_done", run_context, llm_response)
 
+    async def on_before_complete(
+        self,
+        run_context: ContextWrapper[TContext],
+        llm_response: LLMResponse,
+    ) -> bool:
+        """Poll every plugin's completion veto; any ``False`` vetoes the whole.
+
+        Each plugin hook is polled in load order with the same per-hook try/except
+        isolation as ``_dispatch`` — a raising plugin is logged and treated as an admit,
+        never breaking the vote. The aggregate admits only when *every* plugin admits.
+        """
+        admit = True
+        for hook in self._hooks_for("on_before_complete"):
+            try:
+                if await hook(run_context, llm_response) is False:
+                    admit = False
+            except Exception as e:  # noqa: BLE001 - isolate one plugin's failure
+                logger.error(f"Error in plugin on_before_complete hook: {e}", exc_info=True)
+        return admit
+
     async def on_tool_start(
         self,
         run_context: ContextWrapper[TContext],

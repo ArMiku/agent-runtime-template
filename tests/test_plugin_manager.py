@@ -52,8 +52,7 @@ async def test_register_instantiates_initializes_and_collects() -> None:
 
 
 async def test_class_attribute_metadata_or_explicit_metadata() -> None:
-    class _NoAttrs(Plugin):
-        ...
+    class _NoAttrs(Plugin): ...
 
     manager = _manager()
     md = PluginMetadata(name="explicit", author="a", desc="d", version="1")

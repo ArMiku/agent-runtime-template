@@ -40,23 +40,14 @@ from agent_runtime.local_runtime import build_local_agent
 from agent_runtime.provider.entities import LLMResponse, ProviderRequest
 from agent_runtime.provider.provider import Provider
 
-GREET_SKILL_MD = (
-    "---\n"
-    "name: greet\n"
-    "description: Greet the user.\n"
-    "---\n"
-    "# Greet\n\n"
-    "Say hello warmly.\n"
-)
+GREET_SKILL_MD = "---\nname: greet\ndescription: Greet the user.\n---\n# Greet\n\nSay hello warmly.\n"
 
 
 class _ScriptedProvider(Provider):
     """Returns scripted replies; a fresh instance per path keeps the scripts independent."""
 
     def __init__(self, script: list[LLMResponse]) -> None:
-        super().__init__(
-            {"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {}
-        )
+        super().__init__({"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {})
         self._script = list(script)
         self._idx = 0
 
@@ -134,11 +125,7 @@ def _make_contribution() -> tuple[PluginContribution, list[str]]:
 
 
 def _observe(run_context) -> dict:
-    tool_results = [
-        str(getattr(m, "content", ""))
-        for m in run_context.messages
-        if getattr(m, "role", None) == "tool"
-    ]
+    tool_results = [str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"]
     system_msg = run_context.messages[0] if run_context.messages else None
     system_content = getattr(system_msg, "content", "") if system_msg else ""
     return {
@@ -152,17 +139,13 @@ async def _run_oneshot() -> dict:
     """Tier 3: build_local_agent → agent.run(). No reset, no loop written by the caller."""
     contribution, fired = _make_contribution()
     provider = _ScriptedProvider(_script())
-    agent = await build_local_agent(
-        provider, prompt="greet me", contributions=[contribution]
-    )
+    agent = await build_local_agent(provider, prompt="greet me", contributions=[contribution])
     final = await agent.run(max_step=8)
     await agent.aclose()
 
     observed = _observe(agent.run_context)
     observed["tool_names"] = sorted(agent.basics.tools.names())
-    observed["discovered_skills"] = sorted(
-        s.name for s in agent.basics.skill_manager.list_skills()
-    )
+    observed["discovered_skills"] = sorted(s.name for s in agent.basics.skill_manager.list_skills())
     observed["plugin_hook_fired"] = fired == ["hook"] or "hook" in fired
     observed["final_text"] = final.completion_text if final else None
     return observed
@@ -182,9 +165,7 @@ async def _run_manual() -> dict:
     from agent_runtime.core.hooks_chain import ChainedAgentRunHooks
     from agent_runtime.extensions.plugins import CompositeAgentRunHooks
 
-    hooks = ChainedAgentRunHooks(
-        SkillsPromptHook(mgr), CompositeAgentRunHooks([contribution])
-    )
+    hooks = ChainedAgentRunHooks(SkillsPromptHook(mgr), CompositeAgentRunHooks([contribution]))
 
     request = ProviderRequest(prompt="greet me", system_prompt="", func_tool=tools)
     run_context = ContextWrapper(context=SessionContext(session_id="manual"), messages=[])

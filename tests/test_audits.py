@@ -209,9 +209,7 @@ def test_fs_layer_only_depends_inward():
             if module.startswith("agent_runtime.extensions.plugins"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (fs must not import plugins)")
                 continue
-            if module.startswith("agent_runtime.extensions.") and not module.startswith(
-                "agent_runtime.extensions.fs"
-            ):
+            if module.startswith("agent_runtime.extensions.") and not module.startswith("agent_runtime.extensions.fs"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (no cross-extension deps)")
                 continue
             if top == "agent_runtime":
@@ -231,6 +229,83 @@ def test_fs_layer_has_no_host_or_sandbox_residue():
             if token in lowered:
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
     assert not offenders, "host/sandbox/neo residue in fs layer:\n" + "\n".join(offenders)
+
+
+# --- planning subsystem: inward deps + only the PluginStore seam (TYPE_CHECKING) ----
+
+PLANNING_DIR = PKG_SRC / "extensions" / "planning"
+
+
+def _planning_python_files() -> list[Path]:
+    return sorted(PLANNING_DIR.rglob("*.py"))
+
+
+def _is_type_checking_guard(node: ast.If) -> bool:
+    """True if ``node`` is an ``if TYPE_CHECKING:`` block (bare or ``typing.TYPE_CHECKING``)."""
+    test = node.test
+    if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+        return True
+    return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+
+
+def _runtime_import_modules(tree: ast.AST) -> list[str]:
+    """Absolute (level==0) import module names, excluding ``if TYPE_CHECKING:`` bodies."""
+    guarded: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and _is_type_checking_guard(node):
+            for inner in ast.walk(node):
+                guarded.add(id(inner))
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if id(node) in guarded:
+            continue
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.append(node.module)
+        elif isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+    return modules
+
+
+def test_planning_layer_only_depends_inward():
+    """The planning extension may import core/foundation (inward) but never the host
+    application, never another extension, and never a concrete runner.
+
+    The one sanctioned cross-extension touch is the ``PluginStore`` *protocol* — and that
+    must stay ``TYPE_CHECKING``-only (the concrete store is injected at the composition
+    root). So at *runtime* the planning source must not import any ``extensions.*`` peer,
+    including ``extensions.plugins``; nor may it import ``core.runners`` (runner-agnostic).
+    """
+    assert PLANNING_DIR.is_dir(), "extensions/planning must exist"
+    offenders: list[str] = []
+    for path in _planning_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for module in _runtime_import_modules(tree):
+            if module.startswith("agent_runtime.core.runners"):
+                offenders.append(
+                    f"{path.relative_to(PKG_ROOT)}: imports '{module}' (planning must stay runner-agnostic)"
+                )
+                continue
+            if module.startswith("agent_runtime.extensions.") and not module.startswith(
+                "agent_runtime.extensions.planning"
+            ):
+                offenders.append(
+                    f"{path.relative_to(PKG_ROOT)}: runtime-imports '{module}' "
+                    f"(planning's only cross-extension touch is the PluginStore seam, TYPE_CHECKING-only)"
+                )
+    assert not offenders, "planning layer dependency violations:\n" + "\n".join(offenders)
+
+
+def test_planning_layer_has_no_host_or_sandbox_residue():
+    """Source under extensions/planning must not carry host / sandbox / remote-market
+    branding (``sandbox`` / ``neo``)."""
+    banned = ("sandbox", "neo")
+    offenders: list[str] = []
+    for path in _planning_python_files():
+        lowered = path.read_text(encoding="utf-8").lower()
+        for token in banned:
+            if token in lowered:
+                offenders.append(f"{path.relative_to(PKG_ROOT)}: contains '{token}'")
+    assert not offenders, "host/sandbox/neo residue in planning layer:\n" + "\n".join(offenders)
 
 
 # --- composition root: token-neutral branding (import direction NOT constrained) ---

@@ -21,6 +21,7 @@ class BaseAgentRunHooks(Generic[TContext]):
         backward-compatible.
         """
         ...
+
     async def on_tool_start(
         self,
         run_context: ContextWrapper[TContext],
@@ -34,6 +35,25 @@ class BaseAgentRunHooks(Generic[TContext]):
         tool_args: dict | None,
         tool_result: mcp.types.CallToolResult | None,
     ) -> None: ...
+    async def on_before_complete(
+        self,
+        run_context: ContextWrapper[TContext],
+        llm_response: LLMResponse,
+    ) -> bool:
+        """Fired before the runner transitions the agent into its completion state.
+
+        This is the symmetric counterpart of ``on_agent_done`` (fired *after* completion):
+        it runs *before* the runner commits to ``DONE``, when the LLM has returned a final
+        response with no tool calls. Returning ``False`` vetoes the completion — the runner
+        does not transition to ``DONE``, lets the hook append a reminder to
+        ``run_context.messages``, and the step-driven loop runs another round. Returning
+        ``True`` (the default) admits the completion.
+
+        The default is an unconditional admit, so every existing hook subclass and runner
+        stays backward-compatible.
+        """
+        return True
+
     async def on_agent_done(
         self,
         run_context: ContextWrapper[TContext],

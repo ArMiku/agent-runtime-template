@@ -5,6 +5,10 @@ Composition:
 * a process-wide :class:`FunctionToolManager` connects the ``bilibili-search`` MCP
   server (``npx bilibili-mcp-js``) and yields its tools;
 * those tools are merged with the local ``calculate`` tool into one ``ToolSet``;
+* when planning is enabled (``CHATBOT_PLANNING`` env, default on), the ``write_todos``
+  tool joins that set and each turn runs under a :class:`PlanningHook` — the agent can
+  keep a todo plan for multi-step asks, the plan is injected into the system message each
+  step, and a premature finish (unfinished todos) is vetoed;
 * each user turn drives a :class:`ToolLoopAgentRunner` with ``streaming=True``,
   carrying prior messages forward so the conversation is multi-turn;
 * every ``AgentResponse`` the runner yields (reasoning delta, tool_call,
@@ -29,6 +33,8 @@ from agent_runtime.core.message import Message
 from agent_runtime.core.run_context import ContextWrapper
 from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunner
 from agent_runtime.core.tool import ToolSet
+from agent_runtime.extensions.planning import PlanningHook, build_write_todos_tool
+from agent_runtime.extensions.plugins.store import InMemoryPluginStore
 from agent_runtime.provider.entities import ProviderRequest
 from agent_runtime.tools.func_tool_manager import FunctionToolManager
 from examples.chatbot.calculator import build_calculate_tool
@@ -49,8 +55,13 @@ _SYSTEM_PROMPT = (
     "1. `calculate` — for ANY arithmetic, call this tool instead of computing in your head.\n"
     "2. Bilibili search tools — when the user wants videos, search Bilibili and present "
     "the title, author/UP主, and link for the top results.\n"
+    "For an open-ended, multi-step request, first lay out a todo plan with `write_todos` "
+    "(if that tool is available), then work through it, marking items completed as you go.\n"
     "Think step by step, call tools when they help, and reply in 中文."
 )
+
+# Planning is on by default; set CHATBOT_PLANNING=0 to run the plain ReAct chatbot.
+_PLANNING_ENABLED = os.environ.get("CHATBOT_PLANNING", "1") not in ("0", "false", "False", "")
 
 _INDEX_HTML = Path(__file__).with_name("index.html")
 _MAX_STEPS = 12
@@ -87,9 +98,7 @@ async def _build_tools(app: web.Application) -> ToolSet:
     # those parse-failure records via a targeted filter, so genuine errors from this logger
     # are still surfaced. The noise is harmless — tool results still come through.
     mcp_stdio_logger = logging.getLogger("mcp.client.stdio")
-    mcp_stdio_logger.addFilter(
-        lambda record: "Failed to parse JSONRPC message" not in record.getMessage()
-    )
+    mcp_stdio_logger.addFilter(lambda record: "Failed to parse JSONRPC message" not in record.getMessage())
 
     manager = FunctionToolManager()
     app["mcp_manager"] = manager
@@ -105,6 +114,14 @@ async def _build_tools(app: web.Application) -> ToolSet:
 
     tools = manager.get_full_tool_set()
     tools.add_tool(build_calculate_tool())
+    # Planning: the write_todos tool joins the shared set (it reads session_id from
+    # run_context at call time, so one instance serves every session). The plan itself
+    # lives in an app-level store so it persists across this session's turns; the
+    # per-turn PlanningHook (in chat_handler) reads/injects it and vetoes premature finish.
+    if _PLANNING_ENABLED:
+        store = InMemoryPluginStore()
+        app["plan_store"] = store
+        tools.add_tool(build_write_todos_tool(store))
     print(f"[chatbot] Tools available: {sorted(tools.names())}")
     return tools
 
@@ -150,13 +167,18 @@ async def chat_handler(request: web.Request) -> web.StreamResponse:
     run_context: ContextWrapper[SessionContext] = ContextWrapper(
         context=SessionContext(session_id=session_id), messages=[]
     )
+    # Planning hook is per-turn (fresh reminder counter each turn) but points at the
+    # app-level store, so the plan persists across this session's turns. Without planning,
+    # fall back to the default no-op hooks — identical to the plain ReAct chatbot.
+    plan_store = request.app.get("plan_store")
+    agent_hooks = PlanningHook(plan_store) if plan_store is not None else BaseAgentRunHooks()
     runner = ToolLoopAgentRunner()
     await runner.reset(
         provider=provider,
         request=request_obj,
         run_context=run_context,
         tool_executor=FunctionToolExecutor(provider),
-        agent_hooks=BaseAgentRunHooks(),
+        agent_hooks=agent_hooks,
         streaming=True,
     )
 

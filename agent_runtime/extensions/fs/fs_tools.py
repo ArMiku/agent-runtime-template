@@ -47,8 +47,7 @@ DEFAULT_LINE_COUNT = 2000
 MAX_ENTRIES = 1000
 
 _TRANSITION_NOTE = (
-    "safe-by-default narrow tool; superseded by an isolated-execution Bash tool when "
-    "the host provides one"
+    "safe-by-default narrow tool; superseded by an isolated-execution Bash tool when the host provides one"
 )
 
 
@@ -85,9 +84,7 @@ def read_file_text(
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError(
-            f"文件非 UTF-8 文本（在第 {exc.start} 字节处解码失败）；请改用专用解析工具"
-        ) from exc
+        raise ValueError(f"文件非 UTF-8 文本（在第 {exc.start} 字节处解码失败）；请改用专用解析工具") from exc
     if "\x00" in text:
         raise ValueError("文件疑似二进制（检测到 NUL 字节）；请改用专用解析工具")
 
@@ -101,9 +98,7 @@ def read_file_text(
     if start_line < 1:
         raise ValueError(f"start_line 必须 >= 1（当前 {start_line}）")
     if start_line > total_lines:
-        raise ValueError(
-            f"start_line {start_line} 超出文件长度 {total_lines}（合法范围 1..{total_lines}）"
-        )
+        raise ValueError(f"start_line {start_line} 超出文件长度 {total_lines}（合法范围 1..{total_lines}）")
 
     end = min(start_line - 1 + max(1, line_count), total_lines)
     out: list[str] = []

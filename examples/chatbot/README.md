@@ -10,6 +10,7 @@
 | 📺 B 站搜索 | 通过 MCP 连接 `bilibili-mcp-js`,搜索视频并返回标题 / UP主 / 播放量 / 链接 |
 | 💭 思考过程可视化 | 前端实时渲染 reasoning 流、工具调用(名称+参数)、工具结果、最终回答的交错时间线 |
 | 🔁 多轮对话 + 指代消解 | 按 `session_id` 保留历史,支持"它""刚才那个结果"等指代,以及跨工具的链式推理 |
+| 📝 plan-and-execute | 默认开启 `planning` 扩展:面对开放式多步任务,Agent 用 `write_todos` 列 plan、逐项推进;plan 每步注入 system message,未完成时阻止过早结束。设 `CHATBOT_PLANNING=0` 可关闭,退回纯 ReAct |
 
 ## 快速开始
 
@@ -63,9 +64,9 @@ examples/chatbot/
 
 **装配 → 执行 → 推送**的闭环:
 
-1. **装配**(服务启动一次):`FunctionToolManager.enable_mcp_server(name, config)` 用**内联**配置直接连接 B 站 MCP(不写 `mcp_server.json`,不污染 `data/`),其工具与本地 `calculate` 合并进一个 `ToolSet`。
-2. **执行**(每轮请求):构造 `ProviderRequest`(带上历史 `contexts`)→ `ToolLoopAgentRunner.reset(..., streaming=True)` → `step_until_done()` 逐步产出 `AgentResponse`。
-3. **推送**:把每个 `AgentResponse` 翻译成一条 SSE 帧发给浏览器,前端按类型渲染。
+1. **装配**(服务启动一次):`FunctionToolManager.enable_mcp_server(name, config)` 用**内联**配置直接连接 B 站 MCP(不写 `mcp_server.json`,不污染 `data/`),其工具与本地 `calculate` 合并进一个 `ToolSet`。开启 planning 时,`write_todos` 工具也加入该 `ToolSet`,并建一个进程级 `InMemoryPluginStore` 存 plan。
+2. **执行**(每轮请求):构造 `ProviderRequest`(带上历史 `contexts`)→ `ToolLoopAgentRunner.reset(..., streaming=True)` → `step_until_done()` 逐步产出 `AgentResponse`。开启 planning 时,`agent_hooks` 传入**每轮新建**的 `PlanningHook`(指向上面的共享 store):reminder 计数每轮归零,但 plan 经 store 跨轮持久。
+3. **推送**:把每个 `AgentResponse` 翻译成一条 SSE 帧发给浏览器,前端按类型渲染。`write_todos` 的调用与结果走的是既有的 `tool_call` / `tool_result` 事件,所以前端无需改动即可看到 plan 的演进。
 
 ### SSE 事件协议
 
@@ -84,6 +85,7 @@ examples/chatbot/
 ## 已知限制
 
 - 会话历史存在内存里(进程级 `dict`),重启即清空——示例不引入持久化。
+- planning 的 plan 同样存在进程级 `InMemoryPluginStore`,重启即清空;要跨进程恢复,把它换成 host 注入的持久化 `PluginStore` 实现即可(plan 按 `session_id` 隔离)。
 - 服务监听 `127.0.0.1:8000`,无鉴权,仅供本地体验,不要直接暴露到公网。
 - 计算工具刻意只支持纯算术;不提供变量、函数调用等,以保证求值安全。
 

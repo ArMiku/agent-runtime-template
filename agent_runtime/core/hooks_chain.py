@@ -54,6 +54,27 @@ class ChainedAgentRunHooks(BaseAgentRunHooks[TContext]):
     ) -> None:
         await self._dispatch("on_agent_done", run_context, llm_response)
 
+    async def on_before_complete(
+        self,
+        run_context: ContextWrapper[TContext],
+        llm_response: LLMResponse,
+    ) -> bool:
+        """Fan completion veto out to every child; any ``False`` vetoes the whole.
+
+        Each child is polled in construction order with the same per-hook try/except
+        isolation as ``_dispatch`` — a raising child is logged and treated as an admit,
+        never breaking the vote. The aggregate admits only when *every* child admits; a
+        single ``False`` vetoes the completion. The empty chain admits (returns ``True``).
+        """
+        admit = True
+        for hook in self._hooks:
+            try:
+                if await hook.on_before_complete(run_context, llm_response) is False:
+                    admit = False
+            except Exception as e:  # noqa: BLE001 - isolate one hook's failure
+                logger.error(f"Error in chained on_before_complete hook: {e}", exc_info=True)
+        return admit
+
     async def on_tool_start(
         self,
         run_context: ContextWrapper[TContext],

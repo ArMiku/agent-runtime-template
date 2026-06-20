@@ -42,7 +42,9 @@ from agent_runtime.provider.entities import LLMResponse, ProviderRequest
 from agent_runtime.provider.provider import Provider
 
 if TYPE_CHECKING:
+    from agent_runtime.extensions.planning import PlanningHook
     from agent_runtime.extensions.plugins import PluginContribution
+    from agent_runtime.extensions.plugins.store import PluginStore
 
 __all__ = [
     "LocalAgentBasics",
@@ -62,11 +64,14 @@ class LocalAgentBasics:
     Deliberately free of ``provider``/``runner``/``request`` — this is the layer for
     callers that want their own runner lifecycle. ``tools`` is mutable (``add_tool`` /
     ``merge``) and ``hooks`` is replaceable, so a one-shot bundle can still be tweaked.
+    ``planning_hook`` is set only when ``include_planning`` is enabled; a host uses it to
+    read/edit the live plan (manual replanning) through the same write channel the LLM uses.
     """
 
     skill_manager: SkillManager
     tools: ToolSet
     hooks: BaseAgentRunHooks
+    planning_hook: "PlanningHook | None" = None
 
 
 def build_local_agent_basics(
@@ -74,6 +79,8 @@ def build_local_agent_basics(
     skills_root: str | Path | None = None,
     contributions: Sequence["PluginContribution"] = (),
     include_fs: bool = True,
+    include_planning: bool = False,
+    plugin_store: "PluginStore | None" = None,
     extra_allowed_roots: Sequence[str | Path] = (),
 ) -> LocalAgentBasics:
     """Wire skills (+ optional fs + optional plugin contributions) into one bundle.
@@ -86,11 +93,17 @@ def build_local_agent_basics(
     3. when ``include_fs`` (default), merge ``build_fs_tools(allowed_roots=[skills_dir,
        *plugin_skill_dirs, *extra_allowed_roots])``;
     4. ``SkillsPromptHook(mgr)`` plus, when there are plugin ``hook_methods``,
-       ``CompositeAgentRunHooks(contributions)`` — chained into one via
+       ``CompositeAgentRunHooks(contributions)``, plus, when ``include_planning``, the
+       planning ``write_todos`` tool + ``PlanningHook`` — all chained into one via
        ``ChainedAgentRunHooks`` (degenerating to the lone hook when there is only one).
 
-    The fs and plugins extensions are imported lazily so a skills-only caller never
-    pulls them in. The bundle carries no provider/runner — see :func:`build_local_agent`.
+    When ``include_planning`` is set, ``plugin_store`` (defaulting to a fresh
+    ``InMemoryPluginStore``) backs the plan state; a host injects a persistent store for
+    cross-process recovery.
+
+    The fs, plugins, and planning extensions are imported lazily so a skills-only caller
+    never pulls them in. The bundle carries no provider/runner — see
+    :func:`build_local_agent`.
     """
     contributions = list(contributions)
 
@@ -119,18 +132,34 @@ def build_local_agent_basics(
         allowed_roots.extend(extra_allowed_roots)
         tools.merge(ToolSet(build_fs_tools(allowed_roots=allowed_roots)))
 
-    # 4. Skills inventory hook, plus plugin hooks when any contribution declares them.
-    hooks: BaseAgentRunHooks = SkillsPromptHook(skill_manager)
+    # 4. Assemble hooks: skills inventory + (optional) plugin hooks + (optional) planning.
+    #    Collect every live hook, then chain — a lone hook degenerates out of the chain.
+    chained: list[BaseAgentRunHooks] = [SkillsPromptHook(skill_manager)]
+
     has_plugin_hooks = any(contribution.hook_methods for contribution in contributions)
     if has_plugin_hooks:
         from agent_runtime.extensions.plugins import CompositeAgentRunHooks
 
-        hooks = ChainedAgentRunHooks(
-            SkillsPromptHook(skill_manager),
-            CompositeAgentRunHooks(contributions),
-        )
+        chained.append(CompositeAgentRunHooks(contributions))
 
-    return LocalAgentBasics(skill_manager=skill_manager, tools=tools, hooks=hooks)
+    planning_hook: "PlanningHook | None" = None
+    if include_planning:
+        from agent_runtime.extensions.planning import build_planning_extension
+        from agent_runtime.extensions.plugins.store import InMemoryPluginStore
+
+        store = plugin_store if plugin_store is not None else InMemoryPluginStore()
+        write_todos_tool, planning_hook = build_planning_extension(store)
+        tools.add_tool(write_todos_tool)
+        chained.append(planning_hook)
+
+    hooks: BaseAgentRunHooks = chained[0] if len(chained) == 1 else ChainedAgentRunHooks(*chained)
+
+    return LocalAgentBasics(
+        skill_manager=skill_manager,
+        tools=tools,
+        hooks=hooks,
+        planning_hook=planning_hook,
+    )
 
 
 # --- Tier 3: ready-to-run agent (wraps the runner lifecycle) -----------------
@@ -195,6 +224,8 @@ async def build_local_agent(
     skills_root: str | Path | None = None,
     contributions: Sequence["PluginContribution"] = (),
     include_fs: bool = True,
+    include_planning: bool = False,
+    plugin_store: "PluginStore | None" = None,
     extra_allowed_roots: Sequence[str | Path] = (),
     max_turns: int = -1,
     streaming: bool = False,
@@ -209,11 +240,18 @@ async def build_local_agent(
     ``max_turns`` maps to ``enforce_max_turns`` and ``**runner_kwargs`` pass straight
     through to ``runner.reset`` for advanced tuning (``fallback_providers``,
     ``llm_compress_*``, ``truncate_turns``, ``custom_compressor``, ...).
+
+    Set ``include_planning=True`` to add the ``write_todos`` tool + ``PlanningHook``
+    (plan-and-execute over the existing ReAct loop). ``plugin_store`` backs the plan state;
+    inject a persistent implementation for cross-process plan recovery (the default
+    ``InMemoryPluginStore`` is process-local only).
     """
     basics = build_local_agent_basics(
         skills_root=skills_root,
         contributions=contributions,
         include_fs=include_fs,
+        include_planning=include_planning,
+        plugin_store=plugin_store,
         extra_allowed_roots=extra_allowed_roots,
     )
 

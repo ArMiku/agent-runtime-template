@@ -47,8 +47,7 @@ async def test_lifecycle_callable() -> None:
 async def test_kv_roundtrip_via_store() -> None:
     store = InMemoryPluginStore()
 
-    class _KV(Plugin):
-        ...
+    class _KV(Plugin): ...
 
     plugin = _KV(_ctx(name="kv-plugin", store=store))
     await plugin.put_kv_data("count", 7)
@@ -61,11 +60,9 @@ async def test_kv_roundtrip_via_store() -> None:
 async def test_kv_isolated_by_plugin_id() -> None:
     store = InMemoryPluginStore()
 
-    class _A(Plugin):
-        ...
+    class _A(Plugin): ...
 
-    class _B(Plugin):
-        ...
+    class _B(Plugin): ...
 
     a = _A(_ctx(name="plugin-a", store=store))
     b = _B(_ctx(name="plugin-b", store=store))
@@ -76,8 +73,7 @@ async def test_kv_isolated_by_plugin_id() -> None:
 
 
 async def test_kv_without_store_raises() -> None:
-    class _NoStore(Plugin):
-        ...
+    class _NoStore(Plugin): ...
 
     plugin = _NoStore(_ctx(name="no-store", store=None))
     with pytest.raises(RuntimeError, match="plugin_store is not set"):

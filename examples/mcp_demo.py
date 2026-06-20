@@ -63,9 +63,7 @@ class _ScriptedProvider(Provider):
     """Returns scripted replies: first a tool call to ``echo``, then a final line."""
 
     def __init__(self) -> None:
-        super().__init__(
-            {"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {}
-        )
+        super().__init__({"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {})
 
     def get_current_key(self) -> str:
         return "demo-key"
@@ -129,9 +127,7 @@ async def main() -> dict:
     # 2. 执行：scripted provider 触发 echo 工具调用，executor 分派 MCPTool。
     provider = _ScriptedProvider()
     request = ProviderRequest(prompt=_ECHO_PROMPT, system_prompt="", func_tool=tools)
-    run_context = ContextWrapper(
-        context=SessionContext(session_id="mcp-demo"), messages=[]
-    )
+    run_context = ContextWrapper(context=SessionContext(session_id="mcp-demo"), messages=[])
 
     runner = ToolLoopAgentRunner()
     await runner.reset(
@@ -144,11 +140,7 @@ async def main() -> dict:
     async for _ in runner.step_until_done(max_step=5):
         pass
 
-    tool_results = [
-        str(getattr(m, "content", ""))
-        for m in run_context.messages
-        if getattr(m, "role", None) == "tool"
-    ]
+    tool_results = [str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"]
     echo_ran = any(_ECHO_PROMPT in t for t in tool_results)
 
     # 3. 关闭：停掉全部 MCP 连接（公共入口，无需碰私有 _shutdown_runtimes）。

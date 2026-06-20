@@ -52,8 +52,7 @@ class _DemoPlugin(Plugin):
         run_context.messages.append("injected")
 
     @on_agent_begin
-    async def began(self, run_context) -> None:
-        ...
+    async def began(self, run_context) -> None: ...
 
 
 async def test_tool_produces_executable_function_tool() -> None:

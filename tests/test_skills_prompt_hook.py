@@ -16,9 +16,7 @@ from agent_runtime.extensions.skills.skill_manager import SkillManager
 def _manager_with_skill(root: Path, name: str = "greet", desc: str = "Say hi.") -> SkillManager:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {desc}\n---\n# {name}\n", encoding="utf-8"
-    )
+    (skill_dir / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {desc}\n---\n# {name}\n", encoding="utf-8")
     # Isolate config to the tmp tree so the test never depends on the ambient data dir.
     return SkillManager(skills_root=str(root), config_path=str(root.parent / "skills.json"))
 

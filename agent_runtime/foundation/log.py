@@ -93,9 +93,7 @@ def configure_logging(
         handler._agent_runtime_handler = True  # type: ignore[attr-defined]
         logger.addHandler(handler)
 
-    if log_file is not None and not any(
-        getattr(h, "_agent_runtime_file_handler", False) for h in logger.handlers
-    ):
+    if log_file is not None and not any(getattr(h, "_agent_runtime_file_handler", False) for h in logger.handlers):
         os.makedirs(os.path.dirname(os.fspath(log_file)) or ".", exist_ok=True)
         file_handler = RotatingFileHandler(
             os.fspath(log_file),

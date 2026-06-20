@@ -31,8 +31,9 @@ agent_runtime/         # 唯一可导入的包（flat layout）
 ├── extensions/        # 最外层：可插拔扩展子系统，只向内依赖
 │   ├── skills/        # skills 渐进式加载（发现 + 按需载入 SKILL.md，见其 README）
 │   ├── fs/            # 只读路径寻址文件系统工具集（fenced 到 skills/plugin 根，见其 README）
-│   └── plugins/       # 插件贡献 tools / skills / hooks（见其 README）
-└── local_runtime.py   # 组合根：把 skills + fs + plugins 装配成可运行的 LocalAgent
+│   ├── plugins/       # 插件贡献 tools / skills / hooks（见其 README）
+│   └── planning/      # plan-and-execute：write_todos 工具 + PlanningHook（注入 plan + 防早退）
+└── local_runtime.py   # 组合根：把 skills + fs + plugins + planning 装配成可运行的 LocalAgent
 examples/              # 包外：可运行示例（driver.py / *_demo.py + example_provider.py）
 tests/                 # 包外：test_audits.py 校验 import 契约；fakes.py 共享测试替身
 ```
@@ -176,6 +177,37 @@ tool = FunctionTool(name="add", description="...", parameters={...}, handler=add
 大多数 provider **无需新适配器**——只要用不同的 `api_base` + model 子类化 OpenAI
 兼容基类即可（见覆盖表）。如需对接私有协议，子类化 `Provider`（`provider/provider.py`）
 并实现对话方法。
+
+## plan-and-execute（planning 扩展）
+
+与 `skills/`、`fs/` 平级的能力扩展，不改 ReAct 控制流内核，让现有循环"涌现"出规划行为：
+
+```python
+agent = await build_local_agent(
+    provider,
+    prompt="research and summarize X",
+    include_planning=True,          # 装上 write_todos 工具 + PlanningHook
+    plugin_store=my_persistent_store,  # 可选：注入持久化 PluginStore 以跨进程恢复
+)
+```
+
+- **write_todos 工具**：LLM 写入/全量覆盖 plan 的唯一入口。每次传完整清单，新清单整体替换旧清单。
+- **plan 经 PluginStore 持久化**：plan 是按 `session_id` 隔离的独立状态（非消息流），经已有的
+  `PluginStore` KV seam 存取。因此上下文压缩删除历史消息时 plan 不丢；host 注入持久实现即可跨进程恢复
+  （默认 `InMemoryPluginStore` 仅进程内）。
+- **PlanningHook**：复用 `on_llm_request` 每步把当前 plan 注入首条 system message（独立 sentinel
+  `<!-- todo-state -->`，与 skills 注入互不干扰）；并实现内核新增的 `on_before_complete` 事件做"防早退"——
+  存在未完成 todo 时否决完成、追加提醒、让 `step_until_done` 续跑一轮，带 `max_reminders` 上限防死循环。
+- **人工改 plan**：暂停态下 host 经 `basics.planning_hook.read_plan/write_plan` 读改 plan，与 LLM 的
+  `write_todos` 落到同一份独立状态，恢复逻辑只有一套。
+
+**两条路线正交**：planning 是"喂给 ReAct 的料"（路线 2，本扩展实现），不是新控制流。若未来要"显式编排"
+（经典 planner→executor 状态机，路线 1），应作为 `core/runners/` 下的新 `BaseAgentRunner` 子类，由 `runner_type`
+开关选择——planning 扩展仅依赖 `BaseAgentRunHooks` / `ToolSet` / `PluginStore` 抽象，届时可不改自身直接复用。
+完整设计见 `openspec/changes/add-planning-extension/design.md`；可运行示例见 `examples/planning_demo.py`。
+
+`on_before_complete` 是本扩展引入的唯一内核改动：`BaseAgentRunHooks` 新增一个默认放行（返回 `True`）的
+"完成前否决"事件，与 `on_agent_done`（完成后通知）对称，所有现有 hook/runner 向后兼容。
 
 ## 自定义持久化
 

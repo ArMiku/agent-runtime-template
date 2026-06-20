@@ -53,9 +53,7 @@ class _RecordingProvider(Provider):
     """Records the contexts it chats over, then returns scripted replies."""
 
     def __init__(self, script: list[LLMResponse]) -> None:
-        super().__init__(
-            {"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {}
-        )
+        super().__init__({"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {})
         self._script = list(script)
         self._idx = 0
         self.seen_contexts: list = []
@@ -141,11 +139,7 @@ async def main() -> dict:
     async for _ in runner.step_until_done(max_step=8):
         pass
 
-    tool_results = [
-        str(getattr(m, "content", ""))
-        for m in run_context.messages
-        if getattr(m, "role", None) == "tool"
-    ]
+    tool_results = [str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"]
 
     result = {
         "discovered_skills": [s.name for s in skill_manager.list_skills()],
@@ -154,9 +148,7 @@ async def main() -> dict:
         # 2. Discovery: list_dir exposes the scripts/ folder.
         "list_dir_shows_scripts_dir": any("scripts\t[dir]" in t for t in tool_results),
         # 3. Read: the ancillary script is read with line numbers + metadata.
-        "read_file_loaded_script": any(
-            "1\t#!/usr/bin/env bash" in t and "encoding: utf-8" in t for t in tool_results
-        ),
+        "read_file_loaded_script": any("1\t#!/usr/bin/env bash" in t and "encoding: utf-8" in t for t in tool_results),
     }
     print(result)
     return result

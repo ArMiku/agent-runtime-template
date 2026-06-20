@@ -219,6 +219,4 @@ class PluginManager:
     def _reject_if_incomplete(metadata: PluginMetadata) -> None:
         missing = metadata.missing_required_fields()
         if missing:
-            raise MetadataValidationError(
-                f"Plugin metadata is missing required field(s): {', '.join(missing)}"
-            )
+            raise MetadataValidationError(f"Plugin metadata is missing required field(s): {', '.join(missing)}")

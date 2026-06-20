@@ -52,9 +52,7 @@ class _RecordingProvider(Provider):
     """Records the contexts it chats over, then returns scripted replies."""
 
     def __init__(self, script: list[LLMResponse]) -> None:
-        super().__init__(
-            {"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {}
-        )
+        super().__init__({"id": "demo", "type": "demo", "max_context_tokens": 0, "modalities": []}, {})
         self._script = list(script)
         self._idx = 0
         self.seen_contexts: list = []
@@ -123,20 +121,14 @@ async def main() -> dict:
     # 1. Inventory push: the provider saw the inventory in the leading system message,
     #    with exactly one sentinel-delimited segment.
     system_text = "\n".join(
-        str(getattr(m, "content", ""))
-        for m in provider.seen_contexts
-        if getattr(m, "role", None) == "system"
+        str(getattr(m, "content", "")) for m in provider.seen_contexts if getattr(m, "role", None) == "system"
     )
     inventory_in_message = "greet" in system_text and "## Skills" in system_text
     segment_count = system_text.count(INVENTORY_SENTINEL)
 
     # 2. Instruction pull: the Skill tool's result (a tool-role message) carries the
     #    SKILL.md instructions — loaded by name through the real execution path.
-    tool_results = [
-        str(getattr(m, "content", ""))
-        for m in run_context.messages
-        if getattr(m, "role", None) == "tool"
-    ]
+    tool_results = [str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"]
     instructions_loaded = any("Greet" in text for text in tool_results)
 
     result = {

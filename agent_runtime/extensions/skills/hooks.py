@@ -33,9 +33,7 @@ class SkillsPromptHook(BaseAgentRunHooks[TContext]):
 
     _OPEN = "<!-- skills-inventory -->"
     _CLOSE = "<!-- /skills-inventory -->"
-    _SEGMENT_RE = re.compile(
-        re.escape(_OPEN) + r".*?" + re.escape(_CLOSE), re.DOTALL
-    )
+    _SEGMENT_RE = re.compile(re.escape(_OPEN) + r".*?" + re.escape(_CLOSE), re.DOTALL)
 
     def __init__(self, skill_manager: SkillManager) -> None:
         self.skill_manager = skill_manager

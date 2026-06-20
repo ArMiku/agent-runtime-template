@@ -166,9 +166,7 @@ def build_skills_prompt(skills: list[SkillInfo]) -> str:
         if not rendered_path:
             rendered_path = "<skills_root>/<skill_name>"
 
-        skills_lines.append(
-            f"- **{display_name}**: {description}\n  Directory: `{rendered_path}`"
-        )
+        skills_lines.append(f"- **{display_name}**: {description}\n  Directory: `{rendered_path}`")
     skills_block = "\n".join(skills_lines)
 
     return (
@@ -188,7 +186,7 @@ def build_skills_prompt(skills: list[SkillInfo]) -> str:
         "explain why you chose not to.\n"
         "3. **Mandatory grounding** — Before executing any skill you MUST "
         "first load its `SKILL.md` instructions by calling the `Skill` tool "
-        "with the skill's **name** (e.g. `Skill(name=\"<skill_name>\")`). "
+        'with the skill\'s **name** (e.g. `Skill(name="<skill_name>")`). '
         "Never rely on memory or assumptions about a skill's content.\n"
         "4. **Progressive disclosure** — Load only what is directly "
         "referenced from `SKILL.md`:\n"
@@ -224,9 +222,7 @@ class SkillManager:
     ) -> None:
         self.skills_root = skills_root or get_skills_dir()
         self.extra_skill_dirs: list[Path] = [Path(d) for d in (extra_skill_dirs or [])]
-        self.config_path = config_path or os.path.join(
-            get_data_dir(), SKILLS_CONFIG_FILENAME
-        )
+        self.config_path = config_path or os.path.join(get_data_dir(), SKILLS_CONFIG_FILENAME)
         os.makedirs(self.skills_root, exist_ok=True)
         # mtime cache: list_skills runs every LLM step, so the parsed inventory is
         # cached keyed on the mtimes of skills_root + skills.json (+ extra dirs).
@@ -280,9 +276,7 @@ class SkillManager:
         skill_md = _normalize_skill_markdown_path(skill_dir)
         if skill_md is None:
             raise FileNotFoundError(f"Skill has no SKILL.md: {name!r}")
-        active = (
-            self._load_config().get("skills", {}).get(name, {}).get("active", True)
-        )
+        active = self._load_config().get("skills", {}).get(name, {}).get("active", True)
         if not active:
             raise PermissionError(f"Skill is disabled: {name!r}")
         return skill_md.read_text(encoding="utf-8")

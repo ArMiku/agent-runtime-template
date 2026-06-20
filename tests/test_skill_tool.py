@@ -66,9 +66,7 @@ async def test_skill_tool_rejects_inactive(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     config_path = data_dir / "skills.json"
-    config_path.write_text(
-        json.dumps({"skills": {"greet": {"active": False}}}), encoding="utf-8"
-    )
+    config_path.write_text(json.dumps({"skills": {"greet": {"active": False}}}), encoding="utf-8")
     manager.config_path = str(config_path)
     tool = build_skill_tool(manager)
 
