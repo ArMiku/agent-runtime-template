@@ -21,7 +21,7 @@ agent_runtime/         # 唯一可导入的包（flat layout）
 │   ├── tool.py / mcp_client.py                         # 工具原语（FunctionTool/ToolSet/MCPTool/MCPClient）
 │   ├── tool_executor.py / function_tool_executor.py   # 执行器接缝 + 默认实现（带 handoff）
 │   ├── run_context.py / session_context.py            # TContext 接缝 + 默认实现
-│   ├── runners/       # BaseAgentRunner 子类（plan-and-execute 规划器落点）
+│   ├── runners/       # BaseAgentRunner 子类：ToolLoopAgentRunner（ReAct）+ PlanExecuteRunner（显式 plan-and-execute）
 │   └── context/       # 上下文压缩 / 截断 / token 计数 + ContextStore 持久化接缝及默认实现
 ├── provider/          # LLM Provider 抽象 + 内置 sources（openai / anthropic）
 ├── tools/             # 工具管理层：注册表 + MCP 服务生命周期（FunctionToolManager）
@@ -178,7 +178,22 @@ tool = FunctionTool(name="add", description="...", parameters={...}, handler=add
 兼容基类即可（见覆盖表）。如需对接私有协议，子类化 `Provider`（`provider/provider.py`）
 并实现对话方法。
 
-## plan-and-execute（planning 扩展）
+## plan-and-execute（两条正交路线）
+
+本模板内置两条 plan-and-execute 路线，**两两正交**——`runner_type` 选控制流，`include_planning`
+选 ReAct 能力叠加，可任意组合：
+
+```
+build_local_agent(runner_type=?, include_planning=?)
+   ├─ runner_type="react"（默认）
+   │     ├─ include_planning=False → 纯 ReAct
+   │     └─ include_planning=True  → 路线2: ReAct + 涌现 todo
+   └─ runner_type="plan_execute"
+         ├─ include_planning=False → 路线1: 显式编排（子 executor 纯 ReAct）
+         └─ include_planning=True  → 路线1+2: 显式编排，EXEC 子 executor 叠加涌现重规划
+```
+
+### 路线 2 — 涌现式 planning（`extensions/planning/`，能力层）
 
 与 `skills/`、`fs/` 平级的能力扩展，不改 ReAct 控制流内核，让现有循环"涌现"出规划行为：
 
@@ -201,13 +216,48 @@ agent = await build_local_agent(
 - **人工改 plan**：暂停态下 host 经 `basics.planning_hook.read_plan/write_plan` 读改 plan，与 LLM 的
   `write_todos` 落到同一份独立状态，恢复逻辑只有一套。
 
-**两条路线正交**：planning 是"喂给 ReAct 的料"（路线 2，本扩展实现），不是新控制流。若未来要"显式编排"
-（经典 planner→executor 状态机，路线 1），应作为 `core/runners/` 下的新 `BaseAgentRunner` 子类，由 `runner_type`
-开关选择——planning 扩展仅依赖 `BaseAgentRunHooks` / `ToolSet` / `PluginStore` 抽象，届时可不改自身直接复用。
-完整设计见 `openspec/changes/add-planning-extension/design.md`；可运行示例见 `examples/planning_demo.py`。
+### 路线 1 — 显式 plan-and-execute runner（`core/runners/plan_execute_runner.py`，控制流层）
 
-`on_before_complete` 是本扩展引入的唯一内核改动：`BaseAgentRunHooks` 新增一个默认放行（返回 `True`）的
-"完成前否决"事件，与 `on_agent_done`（完成后通知）对称，所有现有 hook/runner 向后兼容。
+经典 planner→executor→replanner 显式状态机，控制流可审计、phase 确定性编排、跨进程精确恢复进度。
+通过装配期开关启用，与 `include_planning` 正交：
+
+```python
+agent = await build_local_agent(
+    provider,
+    prompt="research and summarize X",
+    runner_type="plan_execute",     # PLAN → EXEC → REPLAN 显式状态机
+    include_planning=False,         # 可叠 True：让 EXEC 子 executor 也涌现式重规划
+    plugin_store=my_persistent_store,
+)
+```
+
+- **PLAN**：一次 `tool_choice="required"` 的 `text_chat`（仅含 `submit_plan` 工具）强制结构化产出完整 plan，
+  解析为 `list[Todo]`。
+- **EXEC**：当前 todo 委托一个**隔离的子 `ToolLoopAgentRunner`**（has-a）。子 runner 持独立 `run_context` 与
+  **独立子 hook 链**（默认 `SkillsPromptHook`，叠 `include_planning` 时加子 session 的 `PlanningHook`）；
+  主 hook 链不作用于子 runner，故主 plan 不会否决子 runner 完成。子 runner 的冗长工具调用**不进主上下文**，
+  只把单个 todo 的结果摘要（直用 `completion_text`，零额外 LLM 调用）回收进主上下文——保住相对 ReAct 的省 token 优势。
+- **REPLAN**：一次结构化调用据摘要修订剩余 plan；仍有未完成则游标前进回 EXEC，全完成则转 DONE；带 `_MAX_REPLAN`
+  上限防死循环，达上限放行完成。
+- **一次 `step()` = 一次 LLM 调用**（跨 phase）：host 的 `step_until_done` / 在线暂停颗粒度与 ReAct 完全对齐。
+- **phase 是 runner 私有字段**，对外仍只暴露 `AgentState{IDLE,RUNNING,DONE,ERROR}`；主 runner 完整保持 hook 契约
+  （首步 `on_agent_begin`、转 DONE 前 `on_before_complete`、转 DONE 后 `on_agent_done`；PLAN/REPLAN 不触发主 `on_llm_request`）。
+- **跨进程恢复**：phase + 完整 plan 快照 + 游标 + 各 todo 摘要经 `PluginStore`（独立 key、内联快照）持久化；
+  host 注入持久实现，以相同 `session_id` 重建即恢复到正确 phase 且已完成 todo 不重跑。
+
+完整设计见 `openspec/changes/add-planning-extension/design.md`（路线 2）与
+`openspec/changes/add-plan-execute-runner/design.md`（路线 1）；可运行示例见
+`examples/planning_demo.py` 与 `examples/plan_execute_demo.py`。
+
+### 共享 seam
+
+两条路线共享 `Todo`/`TodoStatus` schema 与 `PluginStore` KV seam（`load_plan`/`save_plan`）：路线 1 的 plan
+真相源是 phase key 内联快照（权威），`save_plan` 写镜像供 host 经 `load_plan` 统一读取、供内层
+`include_planning` 子 runner 使用。路线 1 复用路线 2 的存储/数据纯函数，不耦合其 hook/工具实现。
+
+`on_before_complete` 是路线 2 引入的唯一内核改动：`BaseAgentRunHooks` 新增一个默认放行（返回 `True`）的
+"完成前否决"事件，与 `on_agent_done`（完成后通知）对称，所有现有 hook/runner 向后兼容；路线 1 的主 runner
+在同一接缝上保持完成前否决契约。
 
 ## 自定义持久化
 
@@ -242,9 +292,9 @@ class RedisContextStore:           # 结构化协议——满足 ContextStore Pr
 - **权限三态（allow / deny / ask）不在本模板范围。** 模板不带权限管控；下游项目自行在
   `BaseFunctionToolExecutor.execute` 接缝或工具 wrapper 上实现（典型做法是一个挂起 /
   恢复的工单机制）。
-- **本地 plan-and-execute 不在本模板范围。** 模板不内置规划器，无可迁移代码。请在
-  `BaseAgentRunner` 接缝上从零实现 planner runner——该接缝已支持新增 runner 而不改动
-  `ToolLoopAgentRunner`。
+- **plan-and-execute 首版为扁平 `Todo` 清单。** 路线 1（`PlanExecuteRunner`）与路线 2（planning 扩展）
+  都用扁平 `Todo` 清单驱动，不支持依赖图 / 子任务委派 / reporter 等对标 DeerFlow 的结构化 plan——
+  那是后续增量。两条路线均已内置，默认 `runner_type="react"` 不影响现有调用方。
 - **`MessageChain` 漂移**：`MessageChain` 是一个略偏具体的输出模型切片。当前可接受
   （中性容器）；若它长出平台耦合再重新评估。
 

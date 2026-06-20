@@ -30,6 +30,7 @@ from agent_runtime.core.hooks import BaseAgentRunHooks
 from agent_runtime.core.hooks_chain import ChainedAgentRunHooks
 from agent_runtime.core.response import AgentResponse
 from agent_runtime.core.run_context import ContextWrapper
+from agent_runtime.core.runners.base import BaseAgentRunner
 from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunner
 from agent_runtime.core.session_context import SessionContext
 from agent_runtime.core.tool import ToolSet
@@ -82,6 +83,7 @@ def build_local_agent_basics(
     include_planning: bool = False,
     plugin_store: "PluginStore | None" = None,
     extra_allowed_roots: Sequence[str | Path] = (),
+    runner_type: str = "react",
 ) -> LocalAgentBasics:
     """Wire skills (+ optional fs + optional plugin contributions) into one bundle.
 
@@ -100,6 +102,11 @@ def build_local_agent_basics(
     When ``include_planning`` is set, ``plugin_store`` (defaulting to a fresh
     ``InMemoryPluginStore``) backs the plan state; a host injects a persistent store for
     cross-process recovery.
+
+    ``runner_type`` selects the control-flow paradigm (``"react"`` or ``"plan_execute"``) but
+    does NOT change this bundle: the tools/hooks are runner-agnostic by design (the bundle
+    carries no runner). It is threaded through for API symmetry with :func:`build_local_agent`,
+    where it actually selects the runner.
 
     The fs, plugins, and planning extensions are imported lazily so a skills-only caller
     never pulls them in. The bundle carries no provider/runner — see
@@ -165,6 +172,36 @@ def build_local_agent_basics(
 # --- Tier 3: ready-to-run agent (wraps the runner lifecycle) -----------------
 
 
+def _build_plan_execute_sub_hook_factory(
+    skill_manager: SkillManager,
+    include_planning: bool,
+    plugin_store: "PluginStore",
+) -> Any:
+    """Build the isolated child-hook factory injected into ``PlanExecuteRunner``.
+
+    Each EXEC child runner gets its own hook chain bound to its child ``session_id``:
+    ``SkillsPromptHook`` (so the executor can use skills), plus — only when
+    ``include_planning`` is set — a ``PlanningHook`` over the shared store, which reads/writes
+    the child's emerging plan under the child session (isolated from the top-level plan). The
+    main runner's hook chain never touches a child, so a main ``PlanningHook`` cannot veto a
+    child's completion on the top-level plan.
+
+    Lived here (the composition root) rather than in the runner so the runner stays decoupled
+    from the planning/skills hook implementations.
+    """
+
+    def factory(sub_session_id: str) -> BaseAgentRunHooks:
+        chained: list[BaseAgentRunHooks] = [SkillsPromptHook(skill_manager)]
+        if include_planning:
+            from agent_runtime.extensions.planning import PlanningHook
+
+            chained.append(PlanningHook(plugin_store))
+        return chained[0] if len(chained) == 1 else ChainedAgentRunHooks(*chained)
+
+    return factory
+
+
+
 @dataclass
 class LocalAgent:
     """A one-shot-ready agent: the Tier-2 bundle plus a reset runner.
@@ -176,7 +213,7 @@ class LocalAgent:
     """
 
     basics: LocalAgentBasics
-    runner: "ToolLoopAgentRunner"
+    runner: BaseAgentRunner
     provider: Provider
     request: ProviderRequest
     run_context: ContextWrapper[SessionContext]
@@ -227,6 +264,7 @@ async def build_local_agent(
     include_planning: bool = False,
     plugin_store: "PluginStore | None" = None,
     extra_allowed_roots: Sequence[str | Path] = (),
+    runner_type: str = "react",
     max_turns: int = -1,
     streaming: bool = False,
     **runner_kwargs: Any,
@@ -234,18 +272,39 @@ async def build_local_agent(
     """Assemble a ready-to-run :class:`LocalAgent` (async — ``runner.reset`` is a coro).
 
     Reuses :func:`build_local_agent_basics` (zero duplication), then builds the
-    ``ProviderRequest`` / ``ContextWrapper`` / ``FunctionToolExecutor`` /
-    ``ToolLoopAgentRunner`` and awaits ``runner.reset``. ``provider`` is the only piece
-    the caller must supply (host credentials/model); the factory never constructs one.
-    ``max_turns`` maps to ``enforce_max_turns`` and ``**runner_kwargs`` pass straight
-    through to ``runner.reset`` for advanced tuning (``fallback_providers``,
-    ``llm_compress_*``, ``truncate_turns``, ``custom_compressor``, ...).
+    ``ProviderRequest`` / ``ContextWrapper`` / ``FunctionToolExecutor`` / runner and awaits
+    ``runner.reset``. ``provider`` is the only piece the caller must supply (host
+    credentials/model); the factory never constructs one. ``max_turns`` maps to
+    ``enforce_max_turns`` and ``**runner_kwargs`` pass straight through to ``runner.reset``
+    for advanced tuning (``fallback_providers``, ``llm_compress_*``, ``truncate_turns``,
+    ``custom_compressor``, ...).
+
+    ``runner_type`` selects the control-flow paradigm and is orthogonal to
+    ``include_planning``:
+
+    * ``"react"`` (default) — the ReAct :class:`ToolLoopAgentRunner`.
+    * ``"plan_execute"`` — :class:`~agent_runtime.core.runners.plan_execute_runner.PlanExecuteRunner`,
+      an explicit ``PLAN → EXEC → REPLAN`` state machine. Each EXEC step delegates to an
+      isolated child ReAct runner; set ``include_planning=True`` to let those children also
+      exhibit emergent per-step replanning (route 1 + route 2).
 
     Set ``include_planning=True`` to add the ``write_todos`` tool + ``PlanningHook``
-    (plan-and-execute over the existing ReAct loop). ``plugin_store`` backs the plan state;
-    inject a persistent implementation for cross-process plan recovery (the default
-    ``InMemoryPluginStore`` is process-local only).
+    (plan-and-execute over the existing ReAct loop). ``plugin_store`` backs the plan state
+    (and, for ``plan_execute``, the phase snapshot); inject a persistent implementation for
+    cross-process recovery (the default ``InMemoryPluginStore`` is process-local only).
     """
+    if runner_type not in ("react", "plan_execute"):
+        raise ValueError(
+            f"Unknown runner_type {runner_type!r}; expected 'react' or 'plan_execute'."
+        )
+
+    # plan_execute needs a PluginStore for its phase snapshot even without include_planning;
+    # create one up front so it is shared with planning when both are on (one store, one plan).
+    if (include_planning or runner_type == "plan_execute") and plugin_store is None:
+        from agent_runtime.extensions.plugins.store import InMemoryPluginStore
+
+        plugin_store = InMemoryPluginStore()
+
     basics = build_local_agent_basics(
         skills_root=skills_root,
         contributions=contributions,
@@ -253,6 +312,7 @@ async def build_local_agent(
         include_planning=include_planning,
         plugin_store=plugin_store,
         extra_allowed_roots=extra_allowed_roots,
+        runner_type=runner_type,
     )
 
     request = ProviderRequest(
@@ -266,17 +326,41 @@ async def build_local_agent(
         messages=[],
     )
     tool_executor = FunctionToolExecutor(provider)
-    runner = ToolLoopAgentRunner()
-    await runner.reset(
-        provider=provider,
-        request=request,
-        run_context=run_context,
-        tool_executor=tool_executor,
-        agent_hooks=basics.hooks,
-        streaming=streaming,
-        enforce_max_turns=max_turns,
-        **runner_kwargs,
-    )
+
+    if runner_type == "plan_execute":
+        from agent_runtime.core.runners.plan_execute_runner import PlanExecuteRunner
+
+        runner: BaseAgentRunner = PlanExecuteRunner()
+        sub_hook_factory = _build_plan_execute_sub_hook_factory(
+            skill_manager=basics.skill_manager,
+            include_planning=include_planning,
+            plugin_store=plugin_store,  # type: ignore[arg-type]
+        )
+        await runner.reset(
+            provider=provider,
+            request=request,
+            run_context=run_context,
+            tool_executor=tool_executor,
+            agent_hooks=basics.hooks,
+            plugin_store=plugin_store,  # type: ignore[arg-type]
+            tool_set=basics.tools,
+            sub_hook_factory=sub_hook_factory,
+            streaming=streaming,
+            enforce_max_turns=max_turns,
+            **runner_kwargs,
+        )
+    else:
+        runner = ToolLoopAgentRunner()
+        await runner.reset(
+            provider=provider,
+            request=request,
+            run_context=run_context,
+            tool_executor=tool_executor,
+            agent_hooks=basics.hooks,
+            streaming=streaming,
+            enforce_max_turns=max_turns,
+            **runner_kwargs,
+        )
 
     return LocalAgent(
         basics=basics,

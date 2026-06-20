@@ -57,9 +57,11 @@
   .step.think { border-left: 3px solid var(--think); }
   .step.tool  { border-left: 3px solid var(--tool); }
   .step.result{ border-left: 3px solid var(--result); }
+  .step.plan  { border-left: 3px solid var(--accent-2); }
   .step.think .label { color: var(--think); }
   .step.tool .label  { color: var(--tool); }
   .step.result .label{ color: var(--result); }
+  .step.plan .label  { color: var(--accent-2); }
   pre.json { margin: 4px 0 0; padding: 8px; background: #11141c; border-radius: 6px; overflow-x: auto; color: #cdd3e0; }
 
   .answer { border-left: 3px solid var(--accent); }
@@ -99,7 +101,7 @@
 <body>
   <header>
     <h1>🤖 Agent 对话机器人</h1>
-    <span class="hint">数值计算 · B站视频搜索 · 实时展示思考过程</span>
+    <span class="hint">数值计算 · B站视频搜索 · 实时展示思考过程 · 输入 /plan 显式编排</span>
     <button id="reset" class="reset-btn" title="清空对话并开启新会话">↺ 新会话</button>
   </header>
 
@@ -120,6 +122,10 @@
       <span class="chip seq">用工具算一下 25 乘以 4</span>
       <span class="chip seq">把它再加上 50</span>
       <span class="chip seq">刚才那个结果除以 3，用算出来的数字加上「游戏」去B站搜视频</span>
+    </div>
+    <div class="examples">
+      <span class="hint-label">显式编排 ▶ 输入 /plan 手动开启 plan-execute：</span>
+      <span class="chip">/plan 先用 calculate 算 25 乘以 4，再搜索「AI」的B站视频</span>
     </div>
   </footer>
 
@@ -155,7 +161,7 @@ function addAssistant() {
   wrap.appendChild(trace);
   chat.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
-  return { wrap, trace, thinkStep: null, answerStep: null };
+  return { wrap, trace, thinkStep: null, answerStep: null, planStep: null };
 }
 
 function makeStep(kind, icon, label, name) {
@@ -264,6 +270,16 @@ function handleFrame(frame, ctx) {
     s.body.appendChild(pre);
     s.step.classList.add("collapsed"); // results can be long; collapse by default
     ctx.trace.appendChild(s.step);
+    scrollDown();
+  } else if (event === "plan") {
+    // Route-1 (/plan) turns re-render the whole plan on each PLAN/REPLAN; replace the prior
+    // plan card and pin it to the top of the trace so the evolving plan stays visible.
+    if (ctx.planStep) ctx.planStep.step.remove();
+    ctx.planStep = makeStep("plan", "📋", "计划 (PLAN/REPLAN)", "");
+    ctx.planStep.body.style.whiteSpace = "pre-wrap";
+    ctx.planStep.body.style.color = "var(--text)";
+    ctx.planStep.body.textContent = payload.text || "";
+    ctx.trace.insertBefore(ctx.planStep.step, ctx.trace.firstChild);
     scrollDown();
   } else if (event === "error") {
     const s = makeStep("result", "⚠️", "错误", "");

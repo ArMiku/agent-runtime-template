@@ -865,10 +865,37 @@ class ProviderOpenAIOfficial(Provider):
         model = model or self.get_model()
 
         payloads = {"messages": context_query, "model": model}
+        self._apply_call_options(payloads, kwargs)
 
         self._finally_convert_payload(payloads)
 
         return payloads, context_query
+
+    def _apply_call_options(self, payloads: dict, call_options: dict) -> None:
+        """Forward caller-supplied completion options into the payload.
+
+        ``text_chat`` accepts SDK completion params (``max_tokens``, ``temperature``,
+        ``reasoning_effort``, …) and a vendor-extension ``extra_body`` bag via ``**kwargs``.
+        This normalizes both channels into the flat payload; :meth:`_query` later splits them
+        back into typed params (top-level) vs. vendor extensions (``extra_body``) — the shape
+        the OpenAI SDK expects.
+
+        Precedence: an explicit typed kwarg wins over the same key passed via ``extra_body``
+        (the per-call value is the more deliberate signal). Internal control keys that are not
+        SDK completion params — e.g. ``abort_signal`` (the streaming ReAct loop's cancel handle),
+        ``session_id`` — are intentionally dropped so they can never reach the API.
+        """
+        # extra_body (vendor-extension bag) first, so an explicit typed kwarg below overrides it.
+        extra_body = call_options.get("extra_body")
+        if isinstance(extra_body, dict):
+            for key, value in extra_body.items():
+                if value is not None:
+                    payloads[key] = value
+        for key, value in call_options.items():
+            if key == "extra_body" or value is None:
+                continue
+            if key in self.default_params:
+                payloads[key] = value
 
     def _finally_convert_payload(self, payloads: dict) -> None:
         """Finally convert the payload. Such as think part conversion, tool inject."""
