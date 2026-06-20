@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent 对话机器人</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #1a1d27; --panel-2: #232735; --border: #2e3344;
+    --text: #e6e8ef; --muted: #9aa3b5; --accent: #6ea8fe; --accent-2: #59d499;
+    --tool: #f0b34a; --result: #59d499; --think: #b18cf0; --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel);
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .msg { max-width: 860px; width: 100%; margin: 0 auto; }
+  .role { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .bubble {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+  }
+  .user .bubble { background: var(--panel-2); border-color: #34405c; }
+  .user .role { text-align: right; }
+  .user { text-align: right; }
+  .user .bubble { display: inline-block; text-align: left; max-width: 80%; }
+
+  /* Thinking-process timeline */
+  .trace { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+  .step {
+    border-radius: 10px; border: 1px solid var(--border); overflow: hidden; background: var(--panel);
+  }
+  .step-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;
+    font-size: 13px; user-select: none;
+  }
+  .step-head .icon { font-size: 14px; }
+  .step-head .label { font-weight: 600; }
+  .step-head .name { color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .step-head .chev { margin-left: auto; color: var(--muted); transition: transform .15s; }
+  .step.collapsed .chev { transform: rotate(-90deg); }
+  .step.collapsed .step-body { display: none; }
+  .step-body {
+    padding: 0 12px 10px; font-size: 12.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--muted); white-space: pre-wrap; word-break: break-word;
+  }
+  .step-body .kv { margin-top: 6px; }
+  .step-body .kv .k { color: var(--accent); }
+  .step.think { border-left: 3px solid var(--think); }
+  .step.tool  { border-left: 3px solid var(--tool); }
+  .step.result{ border-left: 3px solid var(--result); }
+  .step.think .label { color: var(--think); }
+  .step.tool .label  { color: var(--tool); }
+  .step.result .label{ color: var(--result); }
+  pre.json { margin: 4px 0 0; padding: 8px; background: #11141c; border-radius: 6px; overflow-x: auto; color: #cdd3e0; }
+
+  .answer { border-left: 3px solid var(--accent); }
+  .err-box { border-left: 3px solid var(--err); color: var(--err); }
+
+  footer { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel); }
+  .composer { max-width: 860px; margin: 0 auto; display: flex; gap: 10px; }
+  textarea {
+    flex: 1; resize: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.5; height: 44px; max-height: 140px;
+    font-family: inherit;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #0b1020; border: none; border-radius: 10px; padding: 0 20px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .examples { max-width: 860px; margin: 10px auto 0; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-size: 12px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 12px; cursor: pointer;
+  }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .hint-label { font-size: 12px; color: var(--muted); align-self: center; }
+  .chip.seq { border-color: #4a5578; color: #b7c0e0; }
+  .chip.seq:hover { border-color: var(--accent-2); color: var(--text); }
+  .reset-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 12px; font-size: 12px; font-weight: 500;
+  }
+  .reset-btn:hover { color: var(--text); border-color: var(--accent); }
+  .cursor::after { content: "▋"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Agent 对话机器人</h1>
+    <span class="hint">数值计算 · B站视频搜索 · 实时展示思考过程</span>
+    <button id="reset" class="reset-btn" title="清空对话并开启新会话">↺ 新会话</button>
+  </header>
+
+  <div id="chat"></div>
+
+  <footer>
+    <div class="composer">
+      <textarea id="input" placeholder="问我算术题，或让我搜B站视频…（Enter 发送，Shift+Enter 换行）"></textarea>
+      <button id="send">发送</button>
+    </div>
+    <div class="examples">
+      <span class="hint-label">单轮试试：</span>
+      <span class="chip">(128 + 256) * 3 的结果是多少？</span>
+      <span class="chip">帮我搜一下「黑神话悟空」的B站视频</span>
+    </div>
+    <div class="examples">
+      <span class="hint-label">多轮指代 ▶ 依次点：</span>
+      <span class="chip seq">用工具算一下 25 乘以 4</span>
+      <span class="chip seq">把它再加上 50</span>
+      <span class="chip seq">刚才那个结果除以 3，用算出来的数字加上「游戏」去B站搜视频</span>
+    </div>
+  </footer>
+
+<script>
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const resetBtn = document.getElementById("reset");
+let sessionId = "sess-" + Math.random().toString(36).slice(2);
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function addUser(text) {
+  const wrap = el("div", "msg user");
+  wrap.appendChild(el("div", "role", "你"));
+  const b = el("div", "bubble");
+  b.textContent = text;
+  wrap.appendChild(b);
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// Build the assistant message container: a trace (thinking steps) + a final answer bubble.
+function addAssistant() {
+  const wrap = el("div", "msg assistant");
+  wrap.appendChild(el("div", "role", "Agent"));
+  const trace = el("div", "trace");
+  wrap.appendChild(trace);
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+  return { wrap, trace, thinkStep: null, answerStep: null };
+}
+
+function makeStep(kind, icon, label, name) {
+  const step = el("div", "step " + kind);
+  const head = el("div", "step-head");
+  head.appendChild(el("span", "icon", icon));
+  head.appendChild(el("span", "label", label));
+  if (name) head.appendChild(el("span", "name", name));
+  head.appendChild(el("span", "chev", "▾"));
+  const bodyWrap = el("div", "step-body");
+  step.appendChild(head);
+  step.appendChild(bodyWrap);
+  head.onclick = () => step.classList.toggle("collapsed");
+  return { step, body: bodyWrap };
+}
+
+function scrollDown() { chat.scrollTop = chat.scrollHeight; }
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  sendBtn.disabled = true;
+  addUser(text);
+  const ctx = addAssistant();
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, session_id: sessionId }),
+    });
+    if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line.
+      const frames = buf.split("\n\n");
+      buf = frames.pop();
+      for (const frame of frames) handleFrame(frame, ctx);
+    }
+  } catch (err) {
+    const e = makeStep("result", "⚠️", "错误", "");
+    e.step.classList.add("err-box");
+    e.body.textContent = String(err);
+    ctx.trace.appendChild(e.step);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+    // Drop the streaming cursor once the turn is complete.
+    if (ctx.answerStep) ctx.answerStep.body.classList.remove("cursor");
+    if (ctx.thinkStep) ctx.thinkStep.body.classList.remove("cursor");
+  }
+}
+
+function handleFrame(frame, ctx) {
+  let event = "message", data = "";
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  let payload;
+  try { payload = JSON.parse(data); } catch { return; }
+
+  if (event === "delta") {
+    if (payload.kind === "reasoning") {
+      if (!ctx.thinkStep) {
+        ctx.thinkStep = makeStep("think", "💭", "思考中", "");
+        ctx.thinkStep.body.classList.add("cursor");
+        ctx.trace.appendChild(ctx.thinkStep.step);
+      }
+      ctx.thinkStep.body.textContent += payload.text;
+    } else {
+      if (!ctx.answerStep) {
+        ctx.answerStep = makeStep("answer", "✅", "回答", "");
+        ctx.answerStep.body.style.fontFamily = "inherit";
+        ctx.answerStep.body.style.color = "var(--text)";
+        ctx.answerStep.body.classList.add("cursor");
+        ctx.trace.appendChild(ctx.answerStep.step);
+      }
+      ctx.answerStep.body.textContent += payload.text;
+    }
+    scrollDown();
+  } else if (event === "tool_call") {
+    // A new tool round starts: stop appending to the previous think/answer block.
+    ctx.thinkStep = null;
+    ctx.answerStep = null;
+    const s = makeStep("tool", "🔧", "调用工具", payload.name);
+    s.body.appendChild(el("div", "kv", '<span class="k">参数</span>'));
+    const pre = el("pre", "json");
+    pre.textContent = JSON.stringify(payload.args || {}, null, 2);
+    s.body.appendChild(pre);
+    ctx.trace.appendChild(s.step);
+    scrollDown();
+  } else if (event === "tool_result") {
+    const s = makeStep("result", "📥", "工具结果", "");
+    const pre = el("pre", "json");
+    pre.textContent = String(payload.result || "");
+    s.body.appendChild(pre);
+    s.step.classList.add("collapsed"); // results can be long; collapse by default
+    ctx.trace.appendChild(s.step);
+    scrollDown();
+  } else if (event === "error") {
+    const s = makeStep("result", "⚠️", "错误", "");
+    s.step.classList.add("err-box");
+    s.body.textContent = payload.message || "未知错误";
+    ctx.trace.appendChild(s.step);
+    scrollDown();
+  } else if (event === "done") {
+    // If the model gave no streamed answer text, fall back to the final text.
+    if (!ctx.answerStep && payload.text) {
+      const s = makeStep("answer", "✅", "回答", "");
+      s.body.style.fontFamily = "inherit";
+      s.body.style.color = "var(--text)";
+      s.body.textContent = payload.text;
+      ctx.trace.appendChild(s.step);
+      scrollDown();
+    }
+  }
+}
+
+sendBtn.onclick = send;
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+input.addEventListener("input", () => {
+  input.style.height = "44px";
+  input.style.height = Math.min(input.scrollHeight, 140) + "px";
+});
+document.querySelectorAll(".chip").forEach((c) => {
+  c.onclick = () => {
+    input.value = c.textContent;
+    // Sequence chips drive the multi-turn coreference demo: send immediately so
+    // each click is one conversational turn against the same session.
+    if (c.classList.contains("seq")) send();
+    else input.focus();
+  };
+});
+
+resetBtn.onclick = () => {
+  if (sendBtn.disabled) return; // don't reset mid-stream
+  sessionId = "sess-" + Math.random().toString(36).slice(2);
+  chat.innerHTML = "";
+  input.focus();
+};
+</script>
+</body>
+</html>
