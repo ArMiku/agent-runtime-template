@@ -96,8 +96,8 @@ class ToolImageCache:
             with open(file_path, "wb") as f:
                 f.write(image_bytes)
             logger.debug(f"Saved tool image to: {file_path}")
-        except Exception as e:
-            logger.error(f"Failed to save tool image: {e}")
+        except Exception:
+            logger.exception("Failed to save tool image")
             raise
 
         return CachedImage(
@@ -125,8 +125,8 @@ class ToolImageCache:
                 image_bytes = f.read()
             base64_data = base64.b64encode(image_bytes).decode("utf-8")
             return base64_data, mime_type
-        except Exception as e:
-            logger.error(f"Failed to read cached image {file_path}: {e}")
+        except Exception:
+            logger.exception(f"Failed to read cached image {file_path}")
             return None
 
     def cleanup_expired(self) -> int:

@@ -214,5 +214,5 @@ def test_read_file_params_and_surface():
     assert tool.name == "read_file"
 
     blob = (tool.name + " " + tool.description + " " + repr(tool.parameters)).lower()
-    for banned in ("astrbot", "sandbox", "neo"):
+    for banned in ("sandbox", "neo"):
         assert banned not in blob

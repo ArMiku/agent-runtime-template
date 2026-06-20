@@ -259,8 +259,8 @@ class LLMSummaryCompressor:
                 contexts=sanitized_summary_contexts,
             )
             summary_content = (response.completion_text or "").strip()
-        except Exception as e:
-            logger.error(f"Failed to generate summary: {e}")
+        except Exception:
+            logger.exception("Failed to generate summary")
             return messages
 
         if not summary_content:

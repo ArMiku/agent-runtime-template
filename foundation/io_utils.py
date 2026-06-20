@@ -66,7 +66,7 @@ async def download_file(
                 downloaded_size = 0
                 start_time = time.time()
                 if show_progress:
-                    print(f"Downloading: {_safe_url_for_log(url)} | Size: {total_size / 1024:.2f} KB")
+                    logger.debug(f"Downloading: {_safe_url_for_log(url)} | Size: {total_size / 1024:.2f} KB")
                 await _emit_download_progress(
                     progress_callback,
                     {
@@ -98,10 +98,7 @@ async def download_file(
                             },
                         )
                         if show_progress:
-                            print(
-                                f"\rProgress: {percent:.2%} Speed: {speed:.2f} KB/s",
-                                end="",
-                            )
+                            logger.debug(f"Progress: {percent:.2%} Speed: {speed:.2f} KB/s")
                 await _emit_download_progress(
                     progress_callback,
                     {
@@ -133,7 +130,7 @@ async def download_file(
                 downloaded_size = 0
                 start_time = time.time()
                 if show_progress:
-                    print(f"Size: {total_size / 1024:.2f} KB | URL: {_safe_url_for_log(url)}")
+                    logger.debug(f"Size: {total_size / 1024:.2f} KB | URL: {_safe_url_for_log(url)}")
                 await _emit_download_progress(
                     progress_callback,
                     {
@@ -165,10 +162,7 @@ async def download_file(
                             },
                         )
                         if show_progress:
-                            print(
-                                f"\rProgress: {percent:.2%} Speed: {speed:.2f} KB/s",
-                                end="",
-                            )
+                            logger.debug(f"Progress: {percent:.2%} Speed: {speed:.2f} KB/s")
                 await _emit_download_progress(
                     progress_callback,
                     {
@@ -180,4 +174,4 @@ async def download_file(
                     },
                 )
     if show_progress:
-        print()
+        logger.debug("Download complete")

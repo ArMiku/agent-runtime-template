@@ -561,8 +561,8 @@ class FunctionToolManager:
         """安全清理单个 MCP 客户端，避免清理异常中断主流程。"""
         try:
             await mcp_client.cleanup()
-        except Exception as cleanup_exc:  # noqa: BLE001 - only log here
-            logger.error(f"Failed to cleanup MCP client resources {name}: {cleanup_exc}")
+        except Exception:  # noqa: BLE001 - only log here
+            logger.exception(f"Failed to cleanup MCP client resources {name}")
 
     async def _init_mcp_client(self, name: str, config: dict) -> MCPClient:
         """初始化单个MCP客户端"""
@@ -731,8 +731,8 @@ class FunctionToolManager:
         try:
             with open(self.mcp_config_path, encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
-            logger.error(f"加载 MCP 配置失败: {e}")
+        except Exception:
+            logger.exception("加载 MCP 配置失败")
             return DEFAULT_MCP_CONFIG
 
     def save_mcp_config(self, config: dict) -> bool:
@@ -740,8 +740,8 @@ class FunctionToolManager:
             with open(self.mcp_config_path, "w", encoding="utf-8") as f:
                 json.dump(config, f, ensure_ascii=False, indent=4)
             return True
-        except Exception as e:
-            logger.error(f"保存 MCP 配置失败: {e}")
+        except Exception:
+            logger.exception("保存 MCP 配置失败")
             return False
 
     def __str__(self) -> str:

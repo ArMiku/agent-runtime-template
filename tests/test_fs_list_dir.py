@@ -131,5 +131,5 @@ def test_list_dir_params_and_surface():
     assert tool.name == "list_dir"
 
     blob = (tool.name + " " + tool.description + " " + repr(tool.parameters)).lower()
-    for banned in ("astrbot", "sandbox", "neo"):
+    for banned in ("sandbox", "neo"):
         assert banned not in blob

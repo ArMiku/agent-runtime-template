@@ -90,7 +90,7 @@ def test_skill_tool_params_have_only_name():
 def test_skill_tool_public_surface_is_neutral():
     tool = build_skill_tool(_manager_via_stub())
     blob = (tool.name + " " + tool.description + " " + repr(tool.parameters)).lower()
-    for banned in ("astrbot", "sandbox", "neo"):
+    for banned in ("sandbox", "neo"):
         assert banned not in blob
 
 

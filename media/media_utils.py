@@ -1029,10 +1029,10 @@ async def convert_video_format(video_path: str, output_format: str = "mp4", outp
         return output_path
 
     except FileNotFoundError:
-        logger.error("ffmpeg is not installed or not in PATH. Install ffmpeg: https://ffmpeg.org/")
+        logger.error("ffmpeg is not installed or not in PATH. Install ffmpeg: https://ffmpeg.org/", exc_info=True)
         raise Exception("ffmpeg not found")
-    except Exception as e:
-        logger.error("Error while converting video format: %s", e)
+    except Exception:
+        logger.exception("Error while converting video format")
         raise
 
 

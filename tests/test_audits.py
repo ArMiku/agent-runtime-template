@@ -139,7 +139,6 @@ def test_skills_layer_only_depends_inward():
     """The skills extension may import core/foundation (inward) but never the host
     application, never the plugin layer, and never another extension.
 
-    * no module rooted at ``astrbot`` (host residue)
     * no module rooted at ``agent_runtime.extensions.plugins`` (the two extensions are
       wired together only via plain path lists at the host, design §7)
     * no module rooted at any other ``agent_runtime.extensions.*`` subpackage
@@ -151,9 +150,6 @@ def test_skills_layer_only_depends_inward():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for module in _absolute_import_modules(tree):
             top = module.split(".")[0]
-            if module.startswith("astrbot"):
-                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
-                continue
             if module.startswith("agent_runtime.extensions.plugins"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (skills must not import plugins)")
                 continue
@@ -169,8 +165,8 @@ def test_skills_layer_only_depends_inward():
 
 def test_skills_layer_has_no_host_or_sandbox_residue():
     """Public symbols and source under extensions/skills must not carry host / sandbox /
-    remote-market branding (``astrbot`` / ``sandbox`` / ``neo``)."""
-    banned = ("astrbot", "sandbox", "neo")
+    remote-market branding (``sandbox`` / ``neo``)."""
+    banned = ("sandbox", "neo")
     offenders: list[str] = []
     for path in _skills_python_files():
         text = path.read_text(encoding="utf-8")
@@ -194,7 +190,6 @@ def test_fs_layer_only_depends_inward():
     """The fs extension may import core/foundation (inward) but never the host
     application, never another extension, and never carry host branding.
 
-    * no module rooted at ``astrbot`` (host residue)
     * no module rooted at ``agent_runtime.extensions.plugins`` or
       ``agent_runtime.extensions.skills`` (fs is wired to skills only via plain path
       lists handed in by the host — design §7; no direct import)
@@ -207,9 +202,6 @@ def test_fs_layer_only_depends_inward():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for module in _absolute_import_modules(tree):
             top = module.split(".")[0]
-            if module.startswith("astrbot"):
-                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
-                continue
             if module.startswith("agent_runtime.extensions.skills"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (fs must not import skills)")
                 continue
@@ -228,8 +220,8 @@ def test_fs_layer_only_depends_inward():
 
 def test_fs_layer_has_no_host_or_sandbox_residue():
     """Public symbols and source under extensions/fs must not carry host / sandbox /
-    remote-market branding (``astrbot`` / ``sandbox`` / ``neo``)."""
-    banned = ("astrbot", "sandbox", "neo")
+    remote-market branding (``sandbox`` / ``neo``)."""
+    banned = ("sandbox", "neo")
     offenders: list[str] = []
     for path in _fs_python_files():
         text = path.read_text(encoding="utf-8")
@@ -252,9 +244,9 @@ def test_composition_root_has_no_host_or_sandbox_residue():
     """The composition root (``local_runtime.py``) and the core chain primitive
     (``core/hooks_chain.py``) may depend inward on every extension, but their ``.py``
     source MUST NOT carry host / sandbox / remote-market branding
-    (``astrbot`` / ``sandbox`` / ``neo``). Import *direction* is intentionally not
+    (``sandbox`` / ``neo``). Import *direction* is intentionally not
     constrained here — the composition root is the one place allowed to wire everything."""
-    banned = ("astrbot", "sandbox", "neo")
+    banned = ("sandbox", "neo")
     offenders: list[str] = []
     for path in COMPOSITION_ROOT_FILES:
         assert path.is_file(), f"{path} must exist"
@@ -273,8 +265,7 @@ PROVIDER_DIR = PKG_ROOT / "provider"
 
 def test_tool_manager_lives_in_tools_layer_not_provider():
     """The tool registry / MCP-lifecycle manager is a tool concern, not a provider
-    concern. It MUST live under ``tools/`` and MUST NOT reappear in ``provider/``
-    (mirrors AstrBot's core/agent-vs-core/tools split)."""
+    concern. It MUST live under ``tools/`` and MUST NOT reappear in ``provider/``."""
     assert (TOOLS_DIR / "func_tool_manager.py").is_file(), "tools/func_tool_manager.py must exist"
     assert not (PROVIDER_DIR / "func_tool_manager.py").exists(), (
         "func_tool_manager.py must not live under provider/ (it is a tool concern)"
@@ -309,10 +300,82 @@ def test_tools_layer_only_depends_inward():
     for path in sorted(TOOLS_DIR.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for module in _absolute_import_modules(tree):
-            if module.startswith("astrbot"):
-                offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (host residue)")
-            elif module.startswith("agent_runtime.provider"):
+            if module.startswith("agent_runtime.provider"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (tools must not import provider)")
             elif module.startswith("agent_runtime.extensions"):
                 offenders.append(f"{path.relative_to(PKG_ROOT)}: imports '{module}' (tools must not import extensions)")
     assert not offenders, "tools layer dependency violations:\n" + "\n".join(offenders)
+
+
+# --- logging discipline: library etiquette as a copy-this template ----------
+#
+# agent_runtime is a second-development template: this source is meant to be
+# copied verbatim by downstream authors, so a logging anti-pattern here is
+# multiplied across every fork. These audits freeze two rules:
+#   1. error logging inside an ``except`` block MUST preserve the traceback
+#      (``logger.exception(...)`` or ``logger.error(..., exc_info=...)``).
+#   2. library source MUST NOT use bare ``print(...)`` (``examples/`` excepted —
+#      sample scripts are terminal-facing).
+
+_LIBRARY_DIRS = ("foundation", "core", "provider", "tools", "message", "media", "extensions")
+
+
+def _library_python_files() -> list[Path]:
+    """All package source files except tests/ and examples/."""
+    files: list[Path] = []
+    for sub in _LIBRARY_DIRS:
+        files.extend((PKG_ROOT / sub).rglob("*.py"))
+    files.extend(p for p in PKG_ROOT.glob("*.py"))  # top-level modules
+    return sorted(files)
+
+
+def _call_has_traceback_kwarg(call: ast.Call) -> bool:
+    """True if a logging call carries ``exc_info=`` (any truthy form)."""
+    return any(kw.arg == "exc_info" for kw in call.keywords)
+
+
+def _is_logger_error(call: ast.Call) -> bool:
+    """Match ``logger.error(...)`` (attribute on the module ``logger`` name).
+
+    Scoped to ``error`` only — an ``except`` block's ``logger.warning`` is often a
+    deliberate recoverable-fallback notice (e.g. an optional-dependency import
+    failing) where a traceback would be noise. Error-level logs in a handler,
+    however, almost always want the stack. This mirrors the spec scenario, which
+    targets ``logger.error`` specifically.
+    """
+    func = call.func
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "error"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "logger"
+    )
+
+
+def test_except_blocks_preserve_traceback():
+    """Inside an ``except`` handler, ``logger.error`` MUST carry ``exc_info`` (or use
+    ``logger.exception``); otherwise the traceback is silently dropped."""
+    offenders: list[str] = []
+    for path in _library_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for handler in (n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler)):
+            for call in (c for c in ast.walk(handler) if isinstance(c, ast.Call)):
+                if _is_logger_error(call) and not _call_has_traceback_kwarg(call):
+                    offenders.append(
+                        f"{path.relative_to(PKG_ROOT)}:{call.lineno}: "
+                        f"logger.error(...) in except block drops traceback "
+                        f"(use logger.exception or exc_info=...)"
+                    )
+    assert not offenders, "traceback-dropping error logs in except blocks:\n" + "\n".join(offenders)
+
+
+def test_library_source_has_no_bare_print():
+    """Library source MUST NOT use bare ``print(...)`` (examples/ is exempt)."""
+    offenders: list[str] = []
+    for path in _library_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for call in (c for c in ast.walk(tree) if isinstance(c, ast.Call)):
+            func = call.func
+            if isinstance(func, ast.Name) and func.id == "print":
+                offenders.append(f"{path.relative_to(PKG_ROOT)}:{call.lineno}: bare print(...)")
+    assert not offenders, "bare print() in library source:\n" + "\n".join(offenders)

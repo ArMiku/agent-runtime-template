@@ -564,8 +564,8 @@ class ProviderOpenAIOfficial(Provider):
             if delta is not None or chunk.usage:
                 try:
                     state.handle_chunk(chunk)
-                except Exception as e:
-                    logger.error("Saving chunk state error: " + str(e))
+                except Exception:
+                    logger.exception("Saving chunk state error")
             # logger.debug(f"chunk delta: {delta}")
             # handle the content delta
             reasoning = self._extract_reasoning_content(chunk)
@@ -596,8 +596,8 @@ class ProviderOpenAIOfficial(Provider):
             final_completion = state.get_final_completion()
             llm_response = await self._parse_openai_completion(final_completion, tools)
             yield llm_response
-        except Exception as e:
-            logger.error("get_final_completion error: " + str(e))
+        except Exception:
+            logger.exception("get_final_completion error")
             # 流式内容已通过 yield 发出，记录错误后正常结束即可
             return
 
@@ -774,8 +774,8 @@ class ProviderOpenAIOfficial(Provider):
                     if isinstance(tool_call.function.arguments, str):
                         try:
                             args = json.loads(tool_call.function.arguments)
-                        except json.JSONDecodeError as e:
-                            logger.error(f"解析参数失败: {e}")
+                        except json.JSONDecodeError:
+                            logger.exception("解析参数失败")
                             args = {}
                     else:
                         args = tool_call.function.arguments

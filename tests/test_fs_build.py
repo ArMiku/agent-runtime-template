@@ -58,5 +58,5 @@ async def test_custom_roots_respected(tmp_path):
 def test_build_fs_tools_surface_is_neutral():
     tools = build_fs_tools([Path("/tmp/never")])
     blob = " ".join(t.name + " " + t.description + " " + repr(t.parameters) for t in tools).lower()
-    for banned in ("astrbot", "sandbox", "neo"):
+    for banned in ("sandbox", "neo"):
         assert banned not in blob

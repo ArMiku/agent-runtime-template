@@ -550,8 +550,8 @@ class MCPClient:
                 await self.list_tools_and_save()
 
                 logger.info(f"Successfully reconnected to MCP server {self._server_name}")
-            except Exception as e:
-                logger.error(f"Failed to reconnect to MCP server {self._server_name}: {e}")
+            except Exception:
+                logger.exception(f"Failed to reconnect to MCP server {self._server_name}")
                 raise
             finally:
                 self._reconnecting = False
