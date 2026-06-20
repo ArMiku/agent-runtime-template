@@ -1,4 +1,4 @@
-"""End-to-end example: a neutral plugin driving the runtime (design.md §8).
+"""End-to-end example: a neutral plugin driving the runtime.
 
 This proves the plugin *mechanism* is self-consistent — it deliberately implements **no**
 real capability (memory / retrieval belong to their own later changes). ``ExamplePlugin``
@@ -11,7 +11,7 @@ exercises every seam:
 
 Run it::
 
-    python -m agent_runtime.examples.plugin_demo
+    python -m examples.plugin_demo
 """
 
 from __future__ import annotations

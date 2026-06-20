@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_runtime.examples.plugin_demo import INJECTED_SYSTEM_NOTE, main
+from examples.plugin_demo import INJECTED_SYSTEM_NOTE, main
 
 
 async def test_example_plugin_end_to_end() -> None:

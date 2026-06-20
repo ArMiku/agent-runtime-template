@@ -13,7 +13,7 @@ ReAct 工具循环"，
 按领域分包、按依赖方向分层：每个接缝抽象与它的开箱默认实现就近同包，外层只能向内依赖，内层不知道外层的存在。
 
 ```
-agent_runtime/
+agent_runtime/         # 唯一可导入的包（flat layout）
 ├── foundation/        # 最内层：宿主中立的基础设施，不含任何领域知识
 │   └── log / paths / network / io_utils / string_utils / exceptions / config
 ├── core/              # Agent 引擎：runner 工具循环、工具原语、hooks、上下文管理
@@ -29,26 +29,31 @@ agent_runtime/
 ├── message/           # 中性消息模型（MessageChain 等）
 ├── media/             # 媒体解析接缝（MediaResolver）
 ├── extensions/        # 最外层：可插拔扩展子系统，只向内依赖
-│   ├── skills/        # skills 加载（路线图占位，见其 README）
-│   └── plugins/       # 插件 / Star 体系（路线图占位，见其 README）
-├── examples/          # 可运行示例（driver.py + example_provider.py 演示包装）
-└── tests/             # 含 test_audits.py——校验上述 import 契约
+│   ├── skills/        # skills 渐进式加载（发现 + 按需载入 SKILL.md，见其 README）
+│   ├── fs/            # 只读路径寻址文件系统工具集（fenced 到 skills/plugin 根，见其 README）
+│   └── plugins/       # 插件贡献 tools / skills / hooks（见其 README）
+└── local_runtime.py   # 组合根：把 skills + fs + plugins 装配成可运行的 LocalAgent
+examples/              # 包外：可运行示例（driver.py / *_demo.py + example_provider.py）
+tests/                 # 包外：test_audits.py 校验 import 契约；fakes.py 共享测试替身
 ```
 
 `test_audits.py` 把这套依赖方向固化成可执行断言：任何反向依赖或越层 import 都会让审计测试变红。
 
 ## 安装
 
-运行时面向 **Python 3.12+**。依赖：
+本项目用 [uv](https://docs.astral.sh/uv/) 管理依赖，面向 **Python 3.12+**：
 
-```
-pydantic  jsonschema  tenacity  mcp  docstring_parser
-aiohttp   deprecated  typing_extensions  pillow
-openai    anthropic
+```bash
+uv sync --extra dev   # 创建 .venv（自动选 Python ≥3.12）+ 装全部依赖 + dev 工具（pytest/ruff）
 ```
 
-`openai` / `anthropic` 仅在使用内置 provider sources（`provider/sources/`）时需要；
-`pillow` 是默认媒体解析器做图片转码用的。
+之后所有命令都走 `uv run`（不要用系统 / anaconda 的 Python，避免依赖漂移）。完整依赖见
+`pyproject.toml`，其中几项说明：
+
+- `openai` / `anthropic`：仅在使用内置 provider sources（`provider/sources/`）时需要
+- `pillow`：默认媒体解析器做图片转码
+- `pyyaml`：skills 子系统解析 SKILL.md frontmatter
+- `socksio`：若环境设了 SOCKS 代理（`all_proxy=socks5://...`）访问 provider 时需要
 
 ## 快速上手（约 50 行的 driver）
 
@@ -60,7 +65,7 @@ from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunne
 from agent_runtime.core.tool import FunctionTool, ToolSet
 from agent_runtime.core.hooks import BaseAgentRunHooks
 from agent_runtime.core import FunctionToolExecutor, SessionContext
-from agent_runtime.examples.example_provider import make_openai_compat_provider
+from examples.example_provider import make_openai_compat_provider
 from agent_runtime.provider.entities import ProviderRequest
 
 
@@ -119,10 +124,11 @@ if __name__ == "__main__":
     print(asyncio.run(run("7 + 5 等于几？用 add 工具算。")))
 ```
 
-可直接运行的副本在 [`driver.py`](driver.py)：
+可直接运行的副本在 `examples/driver.py`。把 `OPENAI_API_KEY`（可选 `OPENAI_MODEL` /
+`OPENAI_API_BASE`）写进项目根的 `.env`（已被 `.gitignore` 忽略），然后：
 
 ```bash
-OPENAI_API_KEY=sk-... python -m agent_runtime.examples.driver
+uv run --env-file .env python -m examples.driver
 ```
 
 ## 四个对外契约（接缝）
@@ -185,7 +191,7 @@ class RedisContextStore:           # 结构化协议——满足 ContextStore Pr
 
 ## Provider 覆盖范围
 
-两个基类即可覆盖大半生态（design.md §11）：
+两个基类即可覆盖大半生态：
 
 | 基类 | 文件 | 覆盖 |
 |------|------|------|
@@ -198,7 +204,7 @@ class RedisContextStore:           # 结构化协议——满足 ContextStore Pr
 
 ## 已知限制
 
-- **MiniMax 协议歧义**（design.md §9）：MiniMax 同时提供 OpenAI 兼容端点和 token-plan
+- **MiniMax 协议歧义**：MiniMax 同时提供 OpenAI 兼容端点和 token-plan
   端点。按端点选基类——OpenAI 端点 → `ProviderOpenAIOfficial`；token-plan →
   `ProviderAnthropic`。
 - **权限三态（allow / deny / ask）不在本模板范围。** 模板不带权限管控；下游项目自行在
@@ -213,7 +219,7 @@ class RedisContextStore:           # 结构化协议——满足 ContextStore Pr
 ## 测试
 
 ```bash
-python -m pytest agent_runtime/tests -q
+uv run pytest -q       # testpaths = ["tests"]；含 test_audits.py 契约审计
 ```
 
 测试覆盖流式 / 非流式 provider 路径、工具循环、`MessageChain` 输出、`ContextStore`

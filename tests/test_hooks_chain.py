@@ -1,5 +1,5 @@
 """Tests for ``ChainedAgentRunHooks``: the core primitive that chains N
-``BaseAgentRunHooks`` into one (design.md §3).
+``BaseAgentRunHooks`` into one.
 
 Covers the three contractual behaviors:
 

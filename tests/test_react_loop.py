@@ -9,7 +9,8 @@ from __future__ import annotations
 import pytest
 
 from agent_runtime.core.tool import FunctionTool, ToolSet
-from agent_runtime.tests.fakes import FakeProvider, llm_text, llm_tool_call, run
+
+from .fakes import FakeProvider, llm_text, llm_tool_call, run
 
 
 class EchoTool(FunctionTool):

@@ -14,7 +14,7 @@ own ancillary files are readable out of the box — no extra wiring.
 
 Run it::
 
-    python -m agent_runtime.examples.fs_demo
+    python -m examples.fs_demo
 """
 
 from __future__ import annotations

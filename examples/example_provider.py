@@ -2,7 +2,7 @@
 
 ``ProviderOpenAIOfficial`` is already the OpenAI-compatible base that covers
 DeepSeek / zhipu / groq / xai / openrouter / longcat / xiaomi / minimax-OpenAI and
-plain OpenAI (design.md §11). Most consumers need no new adapter code — just a
+plain OpenAI. Most consumers need no new adapter code — just a
 configured instance. :func:`make_openai_compat_provider` is the ~one-liner way to
 get one; subclass :class:`ProviderOpenAIOfficial` directly when you need to override
 behaviour.

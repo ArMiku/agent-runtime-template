@@ -14,7 +14,7 @@ change; this example only exercises instruction loading.
 
 Run it::
 
-    python -m agent_runtime.examples.skills_demo
+    python -m examples.skills_demo
 """
 
 from __future__ import annotations

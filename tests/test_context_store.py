@@ -10,7 +10,8 @@ from agent_runtime.core.hooks import BaseAgentRunHooks
 from agent_runtime.core.run_context import ContextWrapper
 from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunner
 from agent_runtime.provider.entities import ProviderRequest
-from agent_runtime.tests.fakes import FakeProvider, llm_text
+
+from .fakes import FakeProvider, llm_text
 
 
 @pytest.mark.asyncio

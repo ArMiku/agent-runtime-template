@@ -1,4 +1,4 @@
-"""Tier 3 tests: ``build_local_agent`` → ``LocalAgent`` (design.md §5).
+"""Tier 3 tests: ``build_local_agent`` → ``LocalAgent``.
 
 The async factory wraps Tier 2 plus the request/context/executor/runner and
 ``runner.reset`` into a ready-to-run object. These assert the wrapper is complete (the
@@ -17,7 +17,8 @@ import pytest
 
 from agent_runtime.local_runtime import LocalAgent, build_local_agent
 from agent_runtime.provider.entities import LLMResponse
-from agent_runtime.tests.fakes import FakeProvider, llm_text, llm_tool_call
+
+from .fakes import FakeProvider, llm_text, llm_tool_call
 
 
 def _seed_skill(root: Path, name: str, desc: str) -> None:
@@ -73,9 +74,7 @@ async def test_run_through(skills_root):
     assert system_msg.role == "system"
     assert "greet" in system_msg.content
     tool_results = [
-        str(getattr(m, "content", ""))
-        for m in agent.run_context.messages
-        if getattr(m, "role", None) == "tool"
+        str(getattr(m, "content", "")) for m in agent.run_context.messages if getattr(m, "role", None) == "tool"
     ]
     assert any("Greeting instructions." in t for t in tool_results)
 
@@ -154,9 +153,7 @@ async def test_aclose_closes_self_built_executor(skills_root, monkeypatch):
         async def aclose(self) -> None:
             closed.append(1)
 
-    monkeypatch.setattr(
-        "agent_runtime.local_runtime.FunctionToolExecutor", _ClosingExecutor
-    )
+    monkeypatch.setattr("agent_runtime.local_runtime.FunctionToolExecutor", _ClosingExecutor)
 
     provider = FakeProvider([llm_text("done")])
     agent = await build_local_agent(provider, prompt="hi", skills_root=str(skills_root))
@@ -174,9 +171,7 @@ async def test_aclose_noop_when_executor_lacks_aclose(skills_root, monkeypatch):
             if False:
                 yield None
 
-    monkeypatch.setattr(
-        "agent_runtime.local_runtime.FunctionToolExecutor", _NoCloseExecutor
-    )
+    monkeypatch.setattr("agent_runtime.local_runtime.FunctionToolExecutor", _NoCloseExecutor)
 
     provider = FakeProvider([llm_text("done")])
     agent = await build_local_agent(provider, prompt="hi", skills_root=str(skills_root))

@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from agent_runtime.message.message_event_result import MessageChain
-from agent_runtime.tests.fakes import FakeProvider, llm_text, run
+
+from .fakes import FakeProvider, llm_text, run
 
 
 @pytest.mark.asyncio

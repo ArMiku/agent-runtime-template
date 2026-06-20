@@ -8,7 +8,7 @@ Run with a real OpenAI-compatible endpoint::
 
     OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-4o-mini \
     OPENAI_API_BASE=https://api.openai.com/v1 \
-    python -m agent_runtime.examples.driver
+    python -m examples.driver
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from agent_runtime.core.hooks import BaseAgentRunHooks
 from agent_runtime.core.run_context import ContextWrapper
 from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunner
 from agent_runtime.core.tool import FunctionTool, ToolSet
-from agent_runtime.examples.example_provider import make_openai_compat_provider
 from agent_runtime.provider.entities import ProviderRequest
+from examples.example_provider import make_openai_compat_provider
 
 __all__ = ["AddTool", "run"]
 

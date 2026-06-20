@@ -1,5 +1,5 @@
 """Tier 2 tests: ``build_local_agent_basics`` — the composition root that wires
-skills + fs + plugins into a ``{skill_manager, tools, hooks}`` bundle (design.md §4).
+skills + fs + plugins into a ``{skill_manager, tools, hooks}`` bundle.
 
 These assert the bundle's *shape* (no provider/runner/request), that a drop-in skill is
 auto-usable through the real runner, that plugin contributions merge, that ``include_fs``
@@ -20,7 +20,8 @@ from agent_runtime.core.runners.tool_loop_agent_runner import ToolLoopAgentRunne
 from agent_runtime.core.session_context import SessionContext
 from agent_runtime.core.tool import FunctionTool, ToolSet
 from agent_runtime.local_runtime import LocalAgentBasics, build_local_agent_basics
-from agent_runtime.tests.fakes import FakeProvider, llm_text, llm_tool_call
+
+from .fakes import FakeProvider, llm_text, llm_tool_call
 
 
 def _seed_skill(root: Path, name: str, desc: str) -> None:
@@ -93,9 +94,7 @@ async def test_dropin_skill_auto_usable(skills_root):
     assert "Skill" in basics.tools.names()
 
     # Script: call Skill(name="greet") -> finish.
-    provider = FakeProvider(
-        [llm_tool_call("Skill", {"name": "greet"}), llm_text("done")]
-    )
+    provider = FakeProvider([llm_tool_call("Skill", {"name": "greet"}), llm_text("done")])
     runner, run_context = await _drive(provider, basics.tools, basics.hooks, prompt="greet me")
 
     # Leading system message carries the inventory (the greet skill is listed).
@@ -105,9 +104,7 @@ async def test_dropin_skill_auto_usable(skills_root):
     assert "## Skills" in system_msg.content
 
     # Skill("greet") ran through the real tool path and returned the SKILL.md body.
-    tool_results = [
-        str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"
-    ]
+    tool_results = [str(getattr(m, "content", "")) for m in run_context.messages if getattr(m, "role", None) == "tool"]
     assert any("Greeting instructions." in t for t in tool_results)
 
 
@@ -191,9 +188,7 @@ def test_bundle_is_tweakable(skills_root):
     async def _h(run_context, **kwargs) -> str:
         return "custom"
 
-    custom = FunctionTool(
-        name="custom", description="c", parameters={"type": "object", "properties": {}}, handler=_h
-    )
+    custom = FunctionTool(name="custom", description="c", parameters={"type": "object", "properties": {}}, handler=_h)
     basics.tools.add_tool(custom)
     assert "custom" in basics.tools.names()
 

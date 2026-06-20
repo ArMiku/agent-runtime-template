@@ -19,6 +19,7 @@ import agent_runtime.message.message_event_result as mer_module
 from agent_runtime.core.tool import FunctionTool
 
 PKG_ROOT = Path(__file__).resolve().parent.parent
+PKG_SRC = PKG_ROOT / "agent_runtime"
 
 # Third-party distributions the runtime is allowed to depend on (declared in
 # pyproject.toml / requirements.txt), keyed by their top-level import name.
@@ -29,7 +30,7 @@ ALLOWED_THIRD_PARTY = {
     "certifi",
     "deprecated",
     "docstring_parser",
-    "google",  # google-genai, TYPE_CHECKING-only (Gemini deferred, design.md §11)
+    "google",  # google-genai, TYPE_CHECKING-only (Gemini deferred)
     "httpx",
     "jsonschema",
     "mcp",
@@ -47,7 +48,7 @@ ALLOWED_FIRST_PARTY = {"agent_runtime"}
 
 
 def _python_files() -> list[Path]:
-    return [p for p in PKG_ROOT.rglob("*.py") if "site-packages" not in str(p)]
+    return [p for p in PKG_SRC.rglob("*.py") if "site-packages" not in str(p)]
 
 
 def _absolute_import_roots(tree: ast.AST) -> set[str]:
@@ -86,7 +87,7 @@ def test_handler_typed_to_tool_exec_result():
 
 def test_runner_discriminates_on_parameters_not_handler():
     """6.7: parameter filter anchored on `tool.parameters`, not `func_tool.handler`."""
-    runner_src = (PKG_ROOT / "core" / "runners" / "tool_loop_agent_runner.py").read_text(encoding="utf-8")
+    runner_src = (PKG_SRC / "core" / "runners" / "tool_loop_agent_runner.py").read_text(encoding="utf-8")
     # The new discriminator (design §5.1):
     assert 'func_tool.parameters and func_tool.parameters.get("properties")' in runner_src
     # The old handler-existence discriminator must be gone from the filter block:
@@ -116,7 +117,7 @@ def test_function_tool_has_no_host_specific_fields():
 
 # --- skills subsystem: dependency direction + no host/sandbox/neo residue ----
 
-SKILLS_DIR = PKG_ROOT / "extensions" / "skills"
+SKILLS_DIR = PKG_SRC / "extensions" / "skills"
 
 
 def _absolute_import_modules(tree: ast.AST) -> list[str]:
@@ -179,7 +180,7 @@ def test_skills_layer_has_no_host_or_sandbox_residue():
 
 # --- fs subsystem: dependency direction + no host/sandbox/neo residue --------
 
-FS_DIR = PKG_ROOT / "extensions" / "fs"
+FS_DIR = PKG_SRC / "extensions" / "fs"
 
 
 def _fs_python_files() -> list[Path]:
@@ -235,8 +236,8 @@ def test_fs_layer_has_no_host_or_sandbox_residue():
 # --- composition root: token-neutral branding (import direction NOT constrained) ---
 
 COMPOSITION_ROOT_FILES = (
-    PKG_ROOT / "local_runtime.py",
-    PKG_ROOT / "core" / "hooks_chain.py",
+    PKG_SRC / "local_runtime.py",
+    PKG_SRC / "core" / "hooks_chain.py",
 )
 
 
@@ -259,8 +260,8 @@ def test_composition_root_has_no_host_or_sandbox_residue():
 
 # --- tool-management layer: lives in `tools/`, not `provider/`; depends only inward ----
 
-TOOLS_DIR = PKG_ROOT / "tools"
-PROVIDER_DIR = PKG_ROOT / "provider"
+TOOLS_DIR = PKG_SRC / "tools"
+PROVIDER_DIR = PKG_SRC / "provider"
 
 
 def test_tool_manager_lives_in_tools_layer_not_provider():
@@ -324,8 +325,8 @@ def _library_python_files() -> list[Path]:
     """All package source files except tests/ and examples/."""
     files: list[Path] = []
     for sub in _LIBRARY_DIRS:
-        files.extend((PKG_ROOT / sub).rglob("*.py"))
-    files.extend(p for p in PKG_ROOT.glob("*.py"))  # top-level modules
+        files.extend((PKG_SRC / sub).rglob("*.py"))
+    files.extend(p for p in PKG_SRC.glob("*.py"))  # top-level modules
     return sorted(files)
 
 

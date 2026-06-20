@@ -14,7 +14,7 @@ you.
 
 Run it::
 
-    python -m agent_runtime.examples.local_runtime_demo
+    python -m examples.local_runtime_demo
 """
 
 from __future__ import annotations
