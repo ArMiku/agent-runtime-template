@@ -35,6 +35,21 @@
 
   /* Thinking-process timeline */
   .trace { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+  .trace-toggle {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+    cursor: pointer; padding: 4px 8px; border-radius: 6px; background: var(--panel-2);
+    border: 1px solid var(--border); margin-bottom: 8px; user-select: none;
+  }
+  .trace-toggle:hover { color: var(--text); border-color: var(--accent); }
+  .trace-toggle .chev { transition: transform .15s; }
+  .trace-toggle.collapsed .chev { transform: rotate(-90deg); }
+  .trace.collapsed { display: none; }
+  .final-answer {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; white-space: pre-wrap; word-break: break-word; line-height: 1.7;
+    font-size: 15px; color: var(--text); border-left: 3px solid var(--accent);
+    margin-top: 8px;
+  }
   .step {
     border-radius: 10px; border: 1px solid var(--border); overflow: hidden; background: var(--panel);
   }
@@ -158,10 +173,20 @@ function addAssistant() {
   const wrap = el("div", "msg assistant");
   wrap.appendChild(el("div", "role", "Agent"));
   const trace = el("div", "trace");
+  const toggle = el("div", "trace-toggle");
+  toggle.innerHTML = '<span class="chev">▾</span> 思考过程';
+  toggle.onclick = () => {
+    toggle.classList.toggle("collapsed");
+    trace.classList.toggle("collapsed");
+  };
+  wrap.appendChild(toggle);
   wrap.appendChild(trace);
+  const answerBubble = el("div", "final-answer");
+  answerBubble.style.display = "none";
+  wrap.appendChild(answerBubble);
   chat.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
-  return { wrap, trace, thinkStep: null, answerStep: null, planStep: null };
+  return { wrap, trace, answerBubble, thinkStep: null, planStep: null };
 }
 
 function makeStep(kind, icon, label, name) {
@@ -218,7 +243,7 @@ async function send() {
     sendBtn.disabled = false;
     input.focus();
     // Drop the streaming cursor once the turn is complete.
-    if (ctx.answerStep) ctx.answerStep.body.classList.remove("cursor");
+    ctx.answerBubble.classList.remove("cursor");
     if (ctx.thinkStep) ctx.thinkStep.body.classList.remove("cursor");
   }
 }
@@ -242,20 +267,18 @@ function handleFrame(frame, ctx) {
       }
       ctx.thinkStep.body.textContent += payload.text;
     } else {
-      if (!ctx.answerStep) {
-        ctx.answerStep = makeStep("answer", "✅", "回答", "");
-        ctx.answerStep.body.style.fontFamily = "inherit";
-        ctx.answerStep.body.style.color = "var(--text)";
-        ctx.answerStep.body.classList.add("cursor");
-        ctx.trace.appendChild(ctx.answerStep.step);
+      // Answer text goes to the independent bubble outside trace.
+      if (!ctx.answerBubble._started) {
+        ctx.answerBubble.style.display = "block";
+        ctx.answerBubble.classList.add("cursor");
+        ctx.answerBubble._started = true;
       }
-      ctx.answerStep.body.textContent += payload.text;
+      ctx.answerBubble.textContent += payload.text;
     }
     scrollDown();
   } else if (event === "tool_call") {
-    // A new tool round starts: stop appending to the previous think/answer block.
+    // A new tool round starts: stop appending to the previous think block.
     ctx.thinkStep = null;
-    ctx.answerStep = null;
     const s = makeStep("tool", "🔧", "调用工具", payload.name);
     s.body.appendChild(el("div", "kv", '<span class="k">参数</span>'));
     const pre = el("pre", "json");
@@ -289,12 +312,9 @@ function handleFrame(frame, ctx) {
     scrollDown();
   } else if (event === "done") {
     // If the model gave no streamed answer text, fall back to the final text.
-    if (!ctx.answerStep && payload.text) {
-      const s = makeStep("answer", "✅", "回答", "");
-      s.body.style.fontFamily = "inherit";
-      s.body.style.color = "var(--text)";
-      s.body.textContent = payload.text;
-      ctx.trace.appendChild(s.step);
+    if (!ctx.answerBubble._started && payload.text) {
+      ctx.answerBubble.style.display = "block";
+      ctx.answerBubble.textContent = payload.text;
       scrollDown();
     }
   }

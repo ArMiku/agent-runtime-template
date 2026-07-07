@@ -5,6 +5,8 @@ Composition:
 * a process-wide :class:`FunctionToolManager` connects the ``bilibili-search`` MCP
   server (``npx bilibili-mcp-js``) and yields its tools;
 * those tools are merged with the local ``calculate`` tool into one ``ToolSet``;
+* a :class:`SkillManager` discovers ``SKILL.md`` bundles from ``data/skills/`` and
+  registers the ``Skill`` tool so the agent can load skill instructions on demand;
 * when planning is enabled (``CHATBOT_PLANNING`` env, default on), the ``write_todos``
   tool joins that set and each turn runs under a :class:`PlanningHook` — the agent can
   keep a todo plan for multi-step asks, the plan is injected into the system message each
@@ -37,6 +39,7 @@ from agent_runtime.core.tool import ToolSet
 from agent_runtime.extensions.planning import PlanningHook, build_write_todos_tool
 from agent_runtime.extensions.planning.store import PLANNING_PLUGIN_ID
 from agent_runtime.extensions.plugins.store import InMemoryPluginStore
+from agent_runtime.extensions.skills import SkillManager, SkillsPromptHook, build_skill_tool
 from agent_runtime.provider.entities import ProviderRequest
 from agent_runtime.tools.func_tool_manager import FunctionToolManager
 from examples.chatbot.calculator import build_calculate_tool
@@ -189,6 +192,10 @@ async def _build_tools(app: web.Application) -> ToolSet:
         store = InMemoryPluginStore()
         app["plan_store"] = store
         tools.add_tool(build_write_todos_tool(store))
+    # Skills: discover SKILL.md bundles from data/skills/ and register the Skill tool.
+    skill_manager = SkillManager()
+    app["skill_manager"] = skill_manager
+    tools.add_tool(build_skill_tool(skill_manager))
     print(f"[chatbot] Tools available: {sorted(tools.names())}")
     return tools
 
@@ -250,8 +257,35 @@ async def chat_handler(request: web.Request) -> web.StreamResponse:
     # Planning hook is per-turn (fresh reminder counter each turn) but points at the
     # app-level store, so the plan persists across this session's turns. Without planning,
     # fall back to the default no-op hooks — identical to the plain ReAct chatbot.
+    # SkillsPromptHook wraps whichever inner hook is active so the skill inventory is
+    # injected into the system message every step.
     plan_store = request.app.get("plan_store")
-    agent_hooks = PlanningHook(plan_store) if plan_store is not None else BaseAgentRunHooks()
+    inner_hooks = PlanningHook(plan_store) if plan_store is not None else BaseAgentRunHooks()
+    skill_manager: SkillManager | None = request.app.get("skill_manager")
+    # When both skills and planning are active, chain them: SkillsPromptHook handles
+    # on_llm_request (inventory), PlanningHook handles on_llm_request (plan) +
+    # on_before_complete (veto). Use a lightweight composite to dispatch to both.
+    if skill_manager and plan_store is not None:
+
+        class _CompositeHooks(BaseAgentRunHooks):
+            """Dispatch on_llm_request to both SkillsPromptHook and PlanningHook."""
+
+            def __init__(self, skills_hook, planning_hook):
+                self._skills = skills_hook
+                self._planning = planning_hook
+
+            async def on_llm_request(self, run_context):
+                await self._skills.on_llm_request(run_context)
+                await self._planning.on_llm_request(run_context)
+
+            async def on_before_complete(self, run_context, llm_response):
+                return await self._planning.on_before_complete(run_context, llm_response)
+
+        agent_hooks = _CompositeHooks(SkillsPromptHook(skill_manager), inner_hooks)
+    elif skill_manager:
+        agent_hooks = SkillsPromptHook(skill_manager)
+    else:
+        agent_hooks = inner_hooks
     runner = ToolLoopAgentRunner()
     await runner.reset(
         provider=provider,
