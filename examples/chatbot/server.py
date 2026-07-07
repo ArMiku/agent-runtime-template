@@ -40,6 +40,7 @@ from agent_runtime.extensions.plugins.store import InMemoryPluginStore
 from agent_runtime.provider.entities import ProviderRequest
 from agent_runtime.tools.func_tool_manager import FunctionToolManager
 from examples.chatbot.calculator import build_calculate_tool
+from examples.chatbot.web_search import build_web_search_tool
 from examples.example_provider import make_openai_compat_provider
 
 # The MCP server the task asks for: Bilibili video search over stdio (npx launcher).
@@ -53,9 +54,11 @@ _MCP_SERVER_CONFIG = {
 }
 
 _SYSTEM_PROMPT = (
-    "You are a helpful Chinese-speaking assistant with two abilities:\n"
+    "You are a helpful Chinese-speaking assistant with several abilities:\n"
     "1. `calculate` — for ANY arithmetic, call this tool instead of computing in your head.\n"
-    "2. Bilibili search tools — when the user wants videos, search Bilibili and present "
+    "2. `web_search` — for anything current or factual you don't already know (news, recent "
+    "events, docs, prices, people), search the live web instead of guessing.\n"
+    "3. Bilibili search tools — when the user wants videos, search Bilibili and present "
     "the title, author/UP主, and link for the top results.\n"
     "For an open-ended, multi-step request, first lay out a todo plan with `write_todos` "
     "(if that tool is available), then work through it, marking items completed as you go.\n"
@@ -173,6 +176,11 @@ async def _build_tools(app: web.Application) -> ToolSet:
 
     tools = manager.get_full_tool_set()
     tools.add_tool(build_calculate_tool())
+    # web_search degrades to "absent" when tavily-python is missing or TAVILY_API_KEY
+    # is unset — the rest of the chatbot (arithmetic, Bilibili, planning) still works.
+    web_search_tool = build_web_search_tool()
+    if web_search_tool is not None:
+        tools.add_tool(web_search_tool)
     # Planning: the write_todos tool joins the shared set (it reads session_id from
     # run_context at call time, so one instance serves every session). The plan itself
     # lives in an app-level store so it persists across this session's turns; the

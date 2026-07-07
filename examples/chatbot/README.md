@@ -1,12 +1,13 @@
 # Agent 对话机器人 Demo
 
-一个基于 `agent_runtime/` 的流式 Agent 对话机器人:能用工具做精确数值计算、连接 MCP 搜索 B 站视频,并在前端实时展示 Agent 的**思考过程**——包括每次工具调用的参数与结果。
+一个基于 `agent_runtime/` 的流式 Agent 对话机器人:能用工具做精确数值计算、联网搜索(Tavily)、连接 MCP 搜索 B 站视频,并在前端实时展示 Agent 的**思考过程**——包括每次工具调用的参数与结果。
 
 ## 能力一览
 
 | 能力 | 说明 |
 |---|---|
 | 🧮 数值计算 | `calculate` 工具,基于 `ast` 白名单求值,支持 `+ - * / // % **` 和括号,拒绝任意代码执行 |
+| 🔍 联网搜索 | `web_search` 工具,基于 Tavily 做实时联网搜索,返回 Top 结果(标题/链接/内容摘要)+ 生成式答案,用于新闻、最新事件、价格等时效性信息。未配置 `TAVILY_API_KEY` 时自动缺省,不影响其它能力 |
 | 📺 B 站搜索 | 通过 MCP 连接 `bilibili-mcp-js`,搜索视频并返回标题 / UP主 / 播放量 / 链接 |
 | 💭 思考过程可视化 | 前端实时渲染 reasoning 流、工具调用(名称+参数)、工具结果、最终回答的交错时间线 |
 | 🔁 多轮对话 + 指代消解 | 按 `session_id` 保留历史,支持"它""刚才那个结果"等指代,以及跨工具的链式推理 |
@@ -25,6 +26,7 @@
   OPENAI_API_KEY=sk-...
   OPENAI_MODEL=gpt-4o-mini            # 任意支持 function-calling 的模型
   OPENAI_API_BASE=https://api.openai.com/v1
+  TAVILY_API_KEY=tvly-...             # 可选:启用 web_search 联网搜索(留空则该工具自动缺省)
   ```
 
   > 覆盖 OpenAI / DeepSeek / 智谱 / groq / xai / openrouter 等,改 `OPENAI_API_BASE` + `OPENAI_MODEL` 即可。
@@ -38,6 +40,7 @@ uv run --env-file .env python -m examples.chatbot
 启动后打开 <http://127.0.0.1:8000>。
 
 > 若 B 站 MCP 启动失败(如未装 node),服务会打印告警并继续运行——计算能力不受影响,仅视频搜索不可用。
+> 同理,未安装 `tavily-python` 或未设 `TAVILY_API_KEY` 时,`web_search` 工具会自动缺省(打印告警),其余能力照常可用。
 
 ## 体验思考过程
 
@@ -107,12 +110,13 @@ examples/chatbot/
 ├── __main__.py     # python -m examples.chatbot 入口
 ├── server.py       # aiohttp 后端:装配工具 + MCP,按轮驱动 runner,SSE 推送
 ├── calculator.py   # calculate 工具:ast 白名单安全求值
+├── web_search.py   # web_search 工具:Tavily 联网搜索(缺省式降级)
 └── index.html      # 单页前端:SSE 客户端 + 思考过程时间线
 ```
 
 **装配 → 执行 → 推送**的闭环:
 
-1. **装配**(服务启动一次):`FunctionToolManager.enable_mcp_server(name, config)` 用**内联**配置直接连接 B 站 MCP(不写 `mcp_server.json`,不污染 `data/`),其工具与本地 `calculate` 合并进一个 `ToolSet`。开启 planning 时,`write_todos` 工具也加入该 `ToolSet`,并建一个进程级 `InMemoryPluginStore` 存 plan。
+1. **装配**(服务启动一次):`FunctionToolManager.enable_mcp_server(name, config)` 用**内联**配置直接连接 B 站 MCP(不写 `mcp_server.json`,不污染 `data/`),其工具与本地 `calculate` / `web_search` 合并进一个 `ToolSet`。开启 planning 时,`write_todos` 工具也加入该 `ToolSet`,并建一个进程级 `InMemoryPluginStore` 存 plan。
 2. **执行**(每轮请求):构造 `ProviderRequest`(带上历史 `contexts`)→ `ToolLoopAgentRunner.reset(..., streaming=True)` → `step_until_done()` 逐步产出 `AgentResponse`。开启 planning 时,`agent_hooks` 传入**每轮新建**的 `PlanningHook`(指向上面的共享 store):reminder 计数每轮归零,但 plan 经 store 跨轮持久。
 3. **推送**:把每个 `AgentResponse` 翻译成一条 SSE 帧发给浏览器,前端按类型渲染。`write_todos` 的调用与结果走的是既有的 `tool_call` / `tool_result` 事件,所以前端无需改动即可看到 plan 的演进。
 
