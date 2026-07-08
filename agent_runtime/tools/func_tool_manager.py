@@ -14,7 +14,7 @@ from typing import Any
 import aiohttp
 
 from agent_runtime import logger
-from agent_runtime.core.mcp_client import MCPClient, MCPTool
+from agent_runtime.core.mcp_client import MCPClient, MCPTool, _normalize_transport_type
 from agent_runtime.core.tool import FunctionTool, ToolSet
 from agent_runtime.foundation.paths import get_data_dir
 
@@ -155,7 +155,7 @@ async def _quick_test_mcp_connection(config: dict) -> tuple[bool, str]:
 
     try:
         async with aiohttp.ClientSession() as session:
-            if cfg.get("transport") == "streamable_http":
+            if _normalize_transport_type(cfg.get("transport", "")) == "streamable_http":
                 test_payload = {
                     "jsonrpc": "2.0",
                     "method": "initialize",

@@ -117,6 +117,17 @@ except (ModuleNotFoundError, ImportError):
     )
 
 
+def _normalize_transport_type(transport_type: str) -> str:
+    """Normalize transport type value to canonical form.
+
+    Accepts both "streamable_http" and "streamable-http" (hyphenated),
+    returning the canonical "streamable_http" for either variant.
+    """
+    if transport_type == "streamable-http":
+        return "streamable_http"
+    return transport_type
+
+
 def _prepare_config(config: dict) -> dict:
     """Prepare configuration, handle nested format"""
     if config.get("mcpServers"):
@@ -263,9 +274,9 @@ async def _quick_test_mcp_connection(config: dict) -> tuple[bool, str]:
 
     try:
         if "transport" in cfg:
-            transport_type = cfg["transport"]
+            transport_type = _normalize_transport_type(cfg["transport"])
         elif "type" in cfg:
-            transport_type = cfg["type"]
+            transport_type = _normalize_transport_type(cfg["type"])
         else:
             raise Exception("MCP connection config missing transport or type field")
 
@@ -414,9 +425,9 @@ class MCPClient:
                 raise Exception(error_msg)
 
             if "transport" in cfg:
-                transport_type = cfg["transport"]
+                transport_type = _normalize_transport_type(cfg["transport"])
             elif "type" in cfg:
-                transport_type = cfg["type"]
+                transport_type = _normalize_transport_type(cfg["type"])
             else:
                 raise Exception("MCP connection config missing transport or type field")
 
