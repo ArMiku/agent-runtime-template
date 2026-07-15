@@ -26,6 +26,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydub" },
     { name = "pyyaml" },
+    { name = "socksio" },
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
@@ -57,6 +58,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "socksio", specifier = ">=1.0.0" },
     { name = "socksio", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "tavily-python", marker = "extra == 'dev'", specifier = ">=0.5.0" },
     { name = "tenacity", specifier = ">=8.0" },
